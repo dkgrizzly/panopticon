@@ -7,9 +7,9 @@ TIMESPEC TS_CLK_OSC = PERIOD "CLK_OSC" 100 MHz HIGH 50%;
 #NET "clk_50" TNM_NET = clk_50;
 #TIMESPEC TS_CLK_50 = PERIOD "clk_50" 20 ns HIGH 50%;
 
-#NET "IDT_CLK1" TNM_NET = IDT_CLK1;
-#TIMESPEC TS_IDT_CLK1 = PERIOD "IDT_CLK1" 25.175 MHz HIGH 50%;
-#NET "IDT_CLK1" CLOCK_DEDICATED_ROUTE = FALSE;
+NET "IDT_CLK1" TNM_NET = IDT_CLK1;
+TIMESPEC TS_IDT_CLK1 = PERIOD "IDT_CLK1" 25.175 MHz HIGH 50%;
+NET "IDT_CLK1" CLOCK_DEDICATED_ROUTE = FALSE;
 
 # 100MHZ Oscillator
 NET "CLK_OSC" LOC = U10 |IOSTANDARD = LVCMOS33;
@@ -17,12 +17,12 @@ NET "CLK_OSC" LOC = U10 |IOSTANDARD = LVCMOS33;
 #============================================================
 # IDT ICS307 Clock Generator
 #============================================================
-#NET "IDT_SCLK"   LOC = F2  |IOSTANDARD = LVCMOS33;
-#NET "IDT_STROBE" LOC = G5  |IOSTANDARD = LVCMOS33;
-#NET "IDT_DATA"   LOC = F1  |IOSTANDARD = LVCMOS33;
+NET "IDT_SCLK"   LOC = F2  |IOSTANDARD = LVCMOS33;
+NET "IDT_STROBE" LOC = G5  |IOSTANDARD = LVCMOS33;
+NET "IDT_DATA"   LOC = F1  |IOSTANDARD = LVCMOS33;
 #
-#NET "IDT_ICLK"   LOC = J2  |IOSTANDARD = LVCMOS33;
-#NET "IDT_CLK1"   LOC = J4  |IOSTANDARD = LVCMOS33;
+NET "IDT_ICLK"   LOC = J2  |IOSTANDARD = LVCMOS33;
+NET "IDT_CLK1"   LOC = J4  |IOSTANDARD = LVCMOS33;
 
 #============================================================
 # SPI - M25P80
@@ -269,4 +269,11 @@ NET "USB_HUB_RESET_B" LOC = H4 | IOSTANDARD = LVCMOS33;
 #NET "ETH_TXER"  LOC = R2  | IOSTANDARD = LVCMOS33;
 #NET "ETH_TXC"   LOC = K5  | IOSTANDARD = LVCMOS33;
 
+#============================================================
+# Debug Serial Connections
+#============================================================
+NET "uart0_txd"  LOC = E1  | IOSTANDARD = LVCMOS33;
+NET "uart0_rxd"  LOC = E2  | IOSTANDARD = LVCMOS33;
+NET "uart1_txd"  LOC = E3  | IOSTANDARD = LVCMOS33;
+NET "uart1_rxd"  LOC = E4  | IOSTANDARD = LVCMOS33;
 

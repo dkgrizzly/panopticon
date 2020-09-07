@@ -1,31 +1,37 @@
 `timescale 1ns / 1ps
 `default_nettype none
 //////////////////////////////////////////////////////////////////////////////////
-// pano_z80pack top level 
+// pano_boot top level
+// Copyright (C) 2020  David Kuder
+//
+// This file is derived from pano_z80 project:
 // Copyright (C) 2019  Skip Hansen
 //
 // This file is derived from Verilogboy project:
 // Copyright (C) 2019  Wenting Zhang <zephray@outlook.com>
 ////////////////////////////////////////////////////////////////////////////////
 
-// `define Z80_RAM_2K
-
 module pano_top(
     // Global Clock Input
     input wire CLK_OSC,
     
     // IDT Clock Generator
-    // Not used, DCM is used to generate the clock
-    /*output wire IDT_ICLK,
+    output wire IDT_ICLK,
     input  wire IDT_CLK1,
     output wire IDT_SCLK,
     output wire IDT_STROBE,
-    output wire IDT_DATA,*/
+    output wire IDT_DATA,
 
     // Power LED
     output wire LED_RED,
     output wire LED_GREEN,
     output wire LED_BLUE,
+    
+    // UART Pins
+    output wire uart0_txd,
+    input wire uart0_rxd,
+    output wire uart1_txd,
+    input wire uart1_rxd,
     
     // Push Button
     input  wire PB,
@@ -103,9 +109,9 @@ module pano_top(
     wire clk_25_in;        // 25MHz clock divided from 100MHz, for VGA and RV
     wire clk_25_raw;
     wire clk_25;
-    wire clk_z80 = clk_25;
     wire clk_rv = clk_25;
-    wire clk_vga = clk_25;
+    //wire clk_vga = clk_25;
+    wire clk_vga = IDT_CLK1;
     wire dcm_locked_12;
     wire dcm_locked_4;
     wire rst_12 = !dcm_locked_4;
@@ -196,129 +202,16 @@ module pano_top(
         .I(clk_25_raw)
     );
     
-    /*reg [1:0] vb_divider;
-    always @(posedge clk_25, posedge rst) begin
-        if (rst) begin
-            vb_divider <= 0;
-            clk_4_raw <= 0;
-        end
-        else 
-            if (vb_divider == 0) begin
-                vb_divider <= 2'd2;
-                clk_4_raw <= ~clk_4_raw;
-            end
-            else
-                vb_divider <= vb_divider - 1;
-    end*/
-    
     BUFG bufg_clk_4 (
         .O(clk_4),
         .I(clk_4_raw)
     );
     
     // ----------------------------------------------------------------------
-    // T80 CPU core
-    wire [7:0] z80di;
-    wire [7:0] z80do;
-    wire [15:0] z80adr;
-    wire [7:0] z80_io_read_data;
-    reg z80_rst;
-    wire z80_M1_n;
-    wire z80_MREQ_n;
-    wire z80_IORQ_n;
-    wire z80_RD_n;
-    wire z80_WR_n;
-    wire z80_RFSH_n;
-    wire z80_HALT_n;
-    wire z80_BUSAK_n;
-    wire z80_Ready;
-    wire io_ready;
-    
-    T80sed T80sed(
-        .RESET_n(!z80_rst),
-        .CLK_n(clk_z80),
-        .CLKEN(1'b1),
-        .WAIT_n(z80_Ready),
-        .INT_n(1'b1),
-        .NMI_n(1'b1),
-        .BUSRQ_n(1'b1),
-        .DI(z80di),
-        .DO(z80do),
-        .A(z80adr),
-        .M1_n(z80_M1_n),
-        .MREQ_n(z80_MREQ_n),
-        .IORQ_n(z80_IORQ_n),
-        .RD_n(z80_RD_n),
-        .WR_n(z80_WR_n),
-        .RFSH_n(z80_RFSH_n),
-        .HALT_n(z80_HALT_n),
-        .BUSAK_n(z80_BUSAK_n)
-    );
-
-    wire z80_io_wr = !z80_IORQ_n && !z80_WR_n;
-    wire z80_io_rd = !z80_IORQ_n && !z80_RD_n;
-    wire z80_mem_wr = !z80_MREQ_n && !z80_WR_n;
-    wire z80_mem_rd = (!z80_MREQ_n || !z80_M1_n) && !z80_RD_n;
-    wire z80_ram_valid;
-    wire z80_io_valid;
-    wire [7:0] z80ram_do;
-    wire [7:0] z80ram_do_b;
-    wire [23:0] z80io_rdata;
+    // Memory BUS
     wire [3:0] mem_wstrb;
     wire [31:0] mem_addr;
     wire [31:0] mem_wdata;
-
-`ifdef Z80_RAM_2K
-    // RAMB16_S9_S9: Spartan-3/3E/3A/3AN/3AD 2k x 8 + 1 Parity bit Dual-Port RAM
-    // Xilinx HDL Libraries Guide, version 11.2
-    RAMB16_S9_S9 #(
-    .INIT_A(9'h000), // Value of output RAM registers on Port A at startup
-    .INIT_B(9'h000), // Value of output RAM registers on Port B at startup
-    .SRVAL_A(9'h000), // Port A output value upon SSR assertion
-    .SRVAL_B(9'h000), // Port B output value upon SSR assertion
-    .WRITE_MODE_A("WRITE_FIRST"), // WRITE_FIRST, READ_FIRST or NO_CHANGE
-    .WRITE_MODE_B("WRITE_FIRST"), // WRITE_FIRST, READ_FIRST or NO_CHANGE
-    .SIM_COLLISION_CHECK("ALL"), // "NONE", "WARNING_ONLY", "GENERATE_X_ONLY", "ALL"
-
-    ) RAMB16_S9_S9_inst (
-    .DOA(z80ram_do), // Port A 8-bit Data Output
-    .DOB(z80ram_do_b), // Port B 8-bit Data Output
-    // .DOPA(DOPA), // Port A 1-bit Parity Output
-    // .DOPB(DOPB), // Port B 1-bit Parity Output
-    .ADDRA(z80adr[10:0]), // Port A 11-bit Address Input
-    .ADDRB(mem_addr[12:2]), // Port B 11-bit Address Input
-    .CLKA(clk_z80), // Port A Clock
-    .CLKB(clk_rv), // Port B Clock
-    .DIA(z80do), // Port A 8-bit Data Input
-    .DIB(mem_wdata[7:0]), // Port B 8-bit Data Input
-    .DIPA(1'b0), // Port A 1-bit parity Input
-    .DIPB(1'b0), // Port-B 1-bit parity Input
-    .ENA(1'b1), // Port A RAM Enable Input
-    .ENB(1'b1), // Port B RAM Enable Input
-    .SSRA(1'b0), // Port A Synchronous Set/Reset Input
-    .SSRB(1'b0), // Port B Synchronous Set/Reset Input
-    .WEA(z80_mem_wr), // Port A Write Enable Input
-    .WEB(z80_ram_valid ? mem_wstrb[0] : 1'b0) // Port B Write Enable Input
-    );
-`else
-    z80_mem z80_mem(
-     // Z80 interface
-        .clka(clk_z80),
-        .wea(z80_mem_wr),
-        .addra(z80adr),
-        .dina(z80do),
-        .douta(z80ram_do),
-     // RISC V interface
-        .clkb(clk_rv),
-        .web(z80_ram_valid ? mem_wstrb[0] : 1'b0),
-        .addrb(mem_addr[17:2]),
-        .dinb(mem_wdata[7:0]),
-        .doutb(z80ram_do_b)
-    );
-`endif
-
-    assign z80di = !z80_IORQ_n ? z80_io_read_data : z80ram_do;
-
 
     // ----------------------------------------------------------------------
     // MIG
@@ -537,16 +430,79 @@ module pano_top(
         .cfgreg_do()
     );
     
+    // IDT Clock Generator ~ 25.17543859 MHz
+    reg [31:0] idt_reg = 32'b001101001000101111110000;
+    reg [31:0] idt_bits = 32'b001101001000101111110000;
+    reg [8:0] idt_count = 9'h000;
+    reg idt_sclk;
+    reg idt_shifting = 1;
+    reg idt_dirty = 0;
+    reg idt_ack = 0;
+    reg idt_strobe = 0;
+    
+    always@(posedge clk_4) begin
+        if(idt_shifting) begin
+            // While we are dirty, clock out 32 bits from the idt_bits register
+            if(idt_count > 0) begin
+                case(idt_count[2:0])
+                    //2'h0: 
+                    //2'h1: 
+                    3'h2: idt_sclk <= 1'b1;
+                    //2'h3: 
+                    //2'h4: 
+                    3'h5: idt_sclk <= 1'b0;
+                    //2'h6:
+                    3'h7: idt_bits <= idt_bits << 1;
+                endcase
+            end
+
+            if(idt_count == 9'h100) begin
+                idt_shifting <= 1'b0;
+            end
+            if(idt_count < 9'h108) begin
+                idt_count <= idt_count + 1;
+            end
+            if(idt_count == 9'h104) begin
+                idt_strobe <= 1'b1;
+            end
+            if(idt_count >= 9'h108) begin
+                idt_strobe <= 1'b0;
+            end
+        end
+        if((!idt_shifting) & (idt_dirty)) begin
+            idt_count <= 9'd000;
+            idt_bits <= idt_reg;
+            idt_shifting <= 1'b1;
+            idt_ack <= 1'b1;
+            idt_strobe <= 1'b0;
+        end
+        if(!idt_dirty) begin
+            idt_ack <= 1'b0;
+        end
+    end
+
+    assign IDT_DATA = idt_bits[31];
+    assign IDT_STROBE = idt_strobe;
+    assign IDT_SCLK = idt_sclk;
+    assign IDT_ICLK = clk_25;
+        
     // ----------------------------------------------------------------------
     // PicoRV32
     
     // Memory Map
-    // 03000000 - 03000100 GPIO          See description below
-    // 03000100 - 03000100 UART          (4B)
-    // 03000200 - 030002FF Z80 I/O       (256B)
-    // 04000000 - 04080000 USB           (512KB)
-    // 05000000 - 0503FFFF Z80 RAM       (256KB, data in low byte only)
-    // 08000000 - 08000FFF Video RAM     (4KB)
+    // 03000000 - 030000FF GPIO          See description below
+    // 03000100 - 03000100 UART0 TXDATA  (4B)
+    // 03000104 - 03000104 UART1 TXDATA  (4B)
+    // 04000000 - 0407FFFF USB           (512KB)
+    // 08000000 - 0800007F Video Regs
+    // 08004000 - 080047FF Video Pal RAM (768 Bytes) 24-Bit
+    // 08008000 - 0800803F Sprite Regs   (16 Bytes) 64-Bit
+    // 08100000 - 0813FFFF Sprite Images (65,536 Bytes) 24-Bit
+    // 08200000 - 08207FFF BG0 Chr RAM   (4,096 Bytes) 24-Bit
+    // 08300000 - 0830FFFF BG0 Images    (16,384 Bits) 1-Bit
+    // 08400000 - 08407FFF BG1 Chr RAM   (8,192 Bytes) 24-Bit
+    // 08500000 - 0853FFFF BG1 Images    (65,536 Bytes) 24-Bit
+    // 08600000 - 0861FFFF Video Bmp RAM (32,768 Bytes) 8-Bit
     // 0C000000 - 0CFFFFFF LPDDR SDRAM   (16MB)
     // 0E000000 - 0E01FFFF SPI Flash     (128KB, mapped from Flash 768K - 896K)
     // FFFF0000 - FFFFFFFF Internal RAM  (8KB w/ echo)
@@ -564,47 +520,78 @@ module pano_top(
     reg cpu_irq;
     
     wire la_addr_in_ram = (mem_la_addr >= 32'hFFFF0000);
-    wire la_addr_in_vram = (mem_la_addr >= 32'h08000000) && (mem_la_addr < 32'h08004000);
     wire la_addr_in_gpio = (mem_la_addr >= 32'h03000000) && (mem_la_addr < 32'h03000100);
-    wire la_addr_in_uart = (mem_la_addr == 32'h03000100);
-    wire la_addr_in_z80_io = (mem_la_addr >= 32'h03000200) && (mem_la_addr < 32'h030002ff);
+    wire la_addr_in_uart0 = (mem_la_addr == 32'h03000100);
+    wire la_addr_in_uart1 = (mem_la_addr == 32'h03000104);
     wire la_addr_in_usb = (mem_la_addr >= 32'h04000000) && (mem_la_addr < 32'h04080000);
-    wire la_addr_in_z80 = (mem_la_addr >= 32'h05000000) && (mem_la_addr < 32'h05040000);
+
+    // Video Bus Sub-Selects                                                                 CPU Words - GPU Bits
+    wire la_addr_in_vga_reg = (mem_la_addr >= 32'h08000000) && (mem_la_addr < 32'h08000080); //    32W - Video Registers
+    wire la_addr_in_vga_pal = (mem_la_addr >= 32'h08004000) && (mem_la_addr < 32'h08004800); //   512W - 512x24   256      24-Bit Palette
+    wire la_addr_in_vga_oam = (mem_la_addr >= 32'h08008000) && (mem_la_addr < 32'h08008040); //    16W -  16x16    16      16-Bit Sprites
+    wire la_addr_in_vga_spr = (mem_la_addr >= 32'h08100000) && (mem_la_addr < 32'h08140000); //   64KW - 64Kx8  1024x(8x8)  8-Bit Tile Data for Sprites
+    wire la_addr_in_vga_bt0 = (mem_la_addr >= 32'h08200000) && (mem_la_addr < 32'h08208000); //    8KW -  8Kx24  128x64    24-Bit Tile Map for BG0
+    wire la_addr_in_vga_bm0 = (mem_la_addr >= 32'h08300000) && (mem_la_addr < 32'h08310000); //   16KW - 16Kx1   256x(8x8)  1-Bit Tile Data (Font) for BG0
+    wire la_addr_in_vga_bt1 = (mem_la_addr >= 32'h08400000) && (mem_la_addr < 32'h08408000); //    8KW -  8Kx16  128x64    16-Bit Tile Map for BG1
+    wire la_addr_in_vga_bm1 = (mem_la_addr >= 32'h08500000) && (mem_la_addr < 32'h08540000); //   64KW - 64Kx8  1024x(8x8)  8-Bit Tile Data for BG1
+    wire la_addr_in_vga_bmp = (mem_la_addr >= 32'h08600000) && (mem_la_addr < 32'h08620000); //   32KW - 32Kx8   256x128    8-Bit Bitmap
+
     wire la_addr_in_ddr = (mem_la_addr >= 32'h0C000000) && (mem_la_addr < 32'h0D000000);
     wire la_addr_in_spi = (mem_la_addr >= 32'h0E000000) && (mem_la_addr < 32'h0E020000);
-    
+
     reg addr_in_ram;
-    reg addr_in_vram;
     reg addr_in_gpio;
-    reg addr_in_uart;
+    reg addr_in_uart0;
+    reg addr_in_uart1;
     reg addr_in_usb;
-    reg addr_in_z80;
-    reg addr_in_z80_io;
+    reg addr_in_vga_reg;
+    reg addr_in_vga_pal;
+    reg addr_in_vga_oam;
+    reg addr_in_vga_spr;
+    reg addr_in_vga_bt0;
+    reg addr_in_vga_bm0;
+    reg addr_in_vga_bt1;
+    reg addr_in_vga_bm1;
+    reg addr_in_vga_bmp;
     reg addr_in_ddr;
     reg addr_in_spi;
     
     always@(posedge clk_rv) begin
         addr_in_ram <= la_addr_in_ram;
-        addr_in_vram <= la_addr_in_vram;
         addr_in_gpio <= la_addr_in_gpio;
-        addr_in_uart <= la_addr_in_uart;
+        addr_in_uart0 <= la_addr_in_uart0;
+        addr_in_uart1 <= la_addr_in_uart1;
         addr_in_usb <= la_addr_in_usb;
-        addr_in_z80 <= la_addr_in_z80;
-        addr_in_z80_io <= la_addr_in_z80_io;
+        addr_in_vga_reg <= la_addr_in_vga_reg;
+        addr_in_vga_pal <= la_addr_in_vga_pal;
+        addr_in_vga_oam <= la_addr_in_vga_oam;
+        addr_in_vga_spr <= la_addr_in_vga_spr;
+        addr_in_vga_bt0 <= la_addr_in_vga_bt0;
+        addr_in_vga_bm0 <= la_addr_in_vga_bm0;
+        addr_in_vga_bt1 <= la_addr_in_vga_bt1;
+        addr_in_vga_bm1 <= la_addr_in_vga_bm1;
+        addr_in_vga_bmp <= la_addr_in_vga_bmp;
         addr_in_ddr <= la_addr_in_ddr;
         addr_in_spi <= la_addr_in_spi;
     end
     
     wire ram_valid = (mem_valid) && (!mem_ready) && (addr_in_ram);
-    wire vram_valid = (mem_valid) && (!mem_ready) && (addr_in_vram);
     wire gpio_valid = (mem_valid) && (addr_in_gpio);
-    wire uart_valid = (mem_valid) && (addr_in_uart);
-    assign ddr_valid = (mem_valid) && (addr_in_ddr);
+    wire uart0_valid = (mem_valid) && (addr_in_uart0);
+    wire uart1_valid = (mem_valid) && (addr_in_uart1);
     assign usb_valid = (mem_valid) && (addr_in_usb);
-    assign z80_ram_valid = (mem_valid) && (addr_in_z80);
-    assign z80_io_valid = (mem_valid) && (addr_in_z80_io);
+    wire vga_reg_valid = (mem_valid) && (!mem_ready) && (addr_in_vga_reg);
+    wire vga_pal_valid = (mem_valid) && (!mem_ready) && (addr_in_vga_pal);
+    wire vga_oam_valid = (mem_valid) && (!mem_ready) && (addr_in_vga_oam);
+    wire vga_spr_valid = (mem_valid) && (!mem_ready) && (addr_in_vga_spr);
+    wire vga_bt0_valid = (mem_valid) && (!mem_ready) && (addr_in_vga_bt0);
+    wire vga_bm0_valid = (mem_valid) && (!mem_ready) && (addr_in_vga_bm0);
+    wire vga_bt1_valid = (mem_valid) && (!mem_ready) && (addr_in_vga_bt1);
+    wire vga_bm1_valid = (mem_valid) && (!mem_ready) && (addr_in_vga_bm1);
+    wire vga_bmp_valid = (mem_valid) && (!mem_ready) && (addr_in_vga_bmp);
+    assign ddr_valid = (mem_valid) && (addr_in_ddr);
     assign spi_valid = (mem_valid) && (addr_in_spi);
-    wire general_valid = (mem_valid) && (!mem_ready) && (!addr_in_ddr) && (!addr_in_uart) && (!addr_in_usb) && (!addr_in_spi);
+    wire general_valid = (mem_valid) && (!mem_ready) && (!addr_in_ddr) && (!addr_in_uart0) && (!addr_in_uart1) && (!addr_in_usb) && (!addr_in_spi);
     
     reg default_ready;
     
@@ -612,13 +599,17 @@ module pano_top(
         default_ready <= general_valid;
     end
     
-    wire uart_ready;
-    assign mem_ready = uart_ready || ddr_ready_buf || usb_ready || spi_ready || default_ready;
+    wire uart0_ready;
+    wire uart1_ready;
+    assign mem_ready = uart0_ready || uart1_ready || ddr_ready_buf || usb_ready || spi_ready || default_ready;
     
     reg mem_valid_last;
     always @(posedge clk_rv) begin
         mem_valid_last <= mem_valid;
-        if (mem_valid && !mem_valid_last && !(ram_valid || spi_valid || vram_valid || gpio_valid || usb_valid || uart_valid || ddr_valid || z80_ram_valid || z80_io_valid))
+        if (mem_valid && !mem_valid_last && !(ram_valid || gpio_valid || usb_valid || uart0_valid || uart1_valid || 
+                vga_reg_valid || vga_pal_valid || vga_oam_valid || vga_spr_valid ||
+                vga_bt0_valid || vga_bm0_valid || vga_bt1_valid || vga_bm1_valid || vga_bmp_valid ||
+                ddr_valid || spi_valid))
             cpu_irq <= 1'b1;
         //else
         //    cpu_irq <= 1'b0;
@@ -690,13 +681,22 @@ module pano_top(
     // UART
     // ----------------------------------------------------------------------
     
-    simple_uart simple_uart(
+    uart_tx uart_tx0(
         .clk(clk_rv),
         .rst(!rst_rv),
-        .wstrb(uart_valid),
-        .ready(uart_ready),
+        .wstrb(uart0_valid),
+        .ready(uart0_ready),
         .dat(mem_wdata[7:0]),
-        .txd(LED_BLUE)
+        .txd(uart0_txd)
+    );
+
+    uart_tx uart_tx1(
+        .clk(clk_rv),
+        .rst(!rst_rv),
+        .wstrb(uart1_valid),
+        .ready(uart1_ready),
+        .dat(mem_wdata[7:0]),
+        .txd(uart1_txd)
     );
 
     // GPIO
@@ -704,8 +704,8 @@ module pano_top(
     
     // 03000000 (0)  - R:  delay_sel_det / W: delay_sel_val
     // 03000004 (1)  - W:  leds (b0: red, b1: green, b2: blue)
-    // 03000008 (2)  - W:  not used
-    // 0300000c (3)  - W:  z80_rst
+    // 03000008 (2)  - W:  idt clock gen
+    // 0300000c (3)  - W:  not used
     // 03000010 (4)  - W:  not used
     // 03000014 (5)  - W:  i2c_scl
     // 03000018 (6)  - RW: i2c_sda
@@ -718,8 +718,11 @@ module pano_top(
     reg usb_rstn;
     reg i2c_scl;
     reg i2c_sda;
-    
+
     always@(posedge clk_rv) begin
+        if(idt_ack) begin
+            idt_dirty <= 0;
+        end
         if (gpio_valid)
              if (mem_wstrb != 0) begin
                 case (mem_addr[5:2])
@@ -729,7 +732,10 @@ module pano_top(
                         led_green <= mem_wdata[1];
                         led_blue <= mem_wdata[2];
                     end
-                    4'd3: z80_rst <= mem_wdata[0];
+                    4'd5: begin
+                        idt_reg <= mem_wdata;
+                        idt_dirty <= 1;
+                    end
                     4'd5: i2c_scl <= mem_wdata[0];
                     4'd6: i2c_sda <= mem_wdata[0];
                     4'd7: usb_rstn <= mem_wdata[0];
@@ -739,7 +745,6 @@ module pano_top(
                 case (mem_addr[5:2])
                     4'd0: gpio_rdata <= {27'd0, delay_sel_val_det};
                     4'd1: gpio_rdata <= {29'd0, led_blue, led_green, led_red};
-                    4'd3: gpio_rdata <= {31'd0, z80_rst};
                     4'd6: gpio_rdata <= {31'd0, AUDIO_SDA};
                 endcase
              end
@@ -749,7 +754,6 @@ module pano_top(
             led_red <= 1'b0;
             led_blue <= 1'b0;
             // vb_key <= 8'd0;
-            z80_rst <= 1'b1;
             i2c_scl <= 1'b1;
             i2c_sda <= 1'b1;
         end
@@ -761,53 +765,55 @@ module pano_top(
     
     assign USB_RESET_B = usb_rstn;
     assign USB_HUB_RESET_B = usb_rstn;
-    
+
     assign mem_rdata = 
         addr_in_ram ? ram_rdata : (
         addr_in_ddr ? ddr_rdata_buf : (
         addr_in_gpio ? gpio_rdata : (
-        addr_in_z80 ? {24'b0, z80ram_do_b} : (
-        addr_in_z80_io ? {8'b0, z80io_rdata} : (
         addr_in_usb ? usb_rdata : (
         addr_in_spi ? spi_rdata : (
-        32'hFFFFFFFF)))))));
+        32'hFFFFFFFF)))));
 
     // ----------------------------------------------------------------------
     // VGA Controller
     wire vga_hs;
     wire vga_vs;
-    wire [6:0] dbg_x;
-    wire [4:0] dbg_y;
-    wire [6:0] dbg_char;
-    wire dbg_clk;
-    wire [23:0] font_fg_color;
-    wire [23:0] font_bg_color;
+
+    wire vga_reg_wea = ((vga_reg_valid) && (mem_wstrb != 0)) ? 1'b1 : 1'b0;
+    wire vga_pal_wea = ((vga_pal_valid) && (mem_wstrb != 0)) ? 1'b1 : 1'b0;
+    wire vga_oam_wea = ((vga_oam_valid) && (mem_wstrb != 0)) ? 1'b1 : 1'b0;
+    wire vga_spr_wea = ((vga_spr_valid) && (mem_wstrb != 0)) ? 1'b1 : 1'b0;
+    wire vga_bt0_wea = ((vga_bt0_valid) && (mem_wstrb != 0)) ? 1'b1 : 1'b0;
+    wire vga_bm0_wea = ((vga_bm0_valid) && (mem_wstrb != 0)) ? 1'b1 : 1'b0;
+    wire vga_bt1_wea = ((vga_bt1_valid) && (mem_wstrb != 0)) ? 1'b1 : 1'b0;
+    wire vga_bm1_wea = ((vga_bm1_valid) && (mem_wstrb != 0)) ? 1'b1 : 1'b0;
+    wire vga_bmp_wea = ((vga_bmp_valid) && (mem_wstrb != 0)) ? 1'b1 : 1'b0;
     
     vga_mixer vga_mixer(
-        .clk(clk_vga),
-        .rst(rst),
-        // GameBoy Image Input
-        .gb_hs(1'b0),
-        .gb_vs(1'b0),
-        .gb_pclk(1'b0),
-        .gb_pdat(1'b0),
-        .gb_valid(1'b0),
-        .gb_en(1'b0),
-        // Debugger Char Input
-        .dbg_x(dbg_x),
-        .dbg_y(dbg_y),
-        .dbg_char(dbg_char),
-        .dbg_sync(dbg_clk),
-        .font_fg_color(font_fg_color),
-        .font_bg_color(font_bg_color),
+        .vga_clk(clk_vga),
+        .vga_rst(rst),
+
+        // CPU Interface
+        .cpu_clk(clk_rv),
+        .vga_reg_wea(vga_reg_wea),
+        .vga_pal_wea(vga_pal_wea),
+        .vga_oam_wea(vga_oam_wea),
+        .vga_spr_wea(vga_spr_wea),
+        .vga_bt0_wea(vga_bt0_wea),
+        .vga_bm0_wea(vga_bm0_wea),
+        .vga_bt1_wea(vga_bt1_wea),
+        .vga_bm1_wea(vga_bm1_wea),
+        .vga_bmp_wea(vga_bmp_wea),
+        .cpu_addr(mem_addr[23:0]),
+        .cpu_din(mem_wdata[31:0]),
+        
         // VGA signal Output
         .vga_hs(vga_hs),
         .vga_vs(vga_vs),
         .vga_blank(VGA_BLANK_B),
         .vga_r(VGA_R),
         .vga_g(VGA_G),
-        .vga_b(VGA_B),
-        .hold(1'b0)
+        .vga_b(VGA_B)
     );
     
     assign VGA_CLK = ~clk_vga;
@@ -816,59 +822,10 @@ module pano_top(
     
     assign VGA_SDA = 1'bz;
     //assign VGA_SCL = 1'bz;
-    
-    wire vram_wea = (vram_valid && (mem_wstrb != 0)) ? 1'b1 : 1'b0;
-    
-    wire [7:0] vram_dout;
-    wire [11:0] rd_addr = dbg_y * 80 + dbg_x;
-    dualport_ram vram(
-        .clka(clk_rv),
-        .wea(vram_wea),
-        .addra(mem_addr[13:2]),
-        .dina(mem_wdata[7:0]),
-        .clkb(!clk_vga),
-        .addrb(rd_addr[11:0]),
-        .doutb(vram_dout)
-    );
-    assign dbg_char = vram_dout[6:0];
-    
- // Z80 <-> RISC V I/O interface
-    cpm_io cpm_io(
-        .clk(clk_rv),
-        .reset(!rst_rv),
-     // Z80 interface
-        .z80_iord(z80_io_rd),
-        .z80_iowr(z80_io_wr),
-        .z80adr(z80adr[7:0]),
-        .z80di(z80_io_read_data),
-        .z80do(z80do),
-        .z80_io_ready(io_ready),
-        .z80hlt(!z80_HALT_n),
-
-    // RISC V interface
-        .io_valid(z80_io_valid),
-        .rv_wdata(mem_wdata[23:0]),
-        .rv_adr(mem_addr[5:2]),
-        .rv_wstr(mem_wstrb[0]),
-        .rv_rdata(z80io_rdata),
-
-     // vga_mixer interface
-        .font_fg_color(font_fg_color),
-        .font_bg_color(font_bg_color)
-        );
-    assign z80_Ready = !(!z80_IORQ_n && !io_ready);
         
-// synthesis translate_off
-    always @(posedge clk_rv) begin
-        if (vram_wea) begin
-            $display("%c", mem_wdata[7:0]);
-        end
-    end
-// synthesis translate_on
-    
     // ----------------------------------------------------------------------
     // LED 
-//    assign LED_BLUE = !led_blue;
+    assign LED_BLUE = !led_blue;
     assign LED_RED = !led_red;
     assign LED_GREEN = !led_green;
     

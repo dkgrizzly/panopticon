@@ -27,10 +27,6 @@ module vga_timing(
     input wire vsi,
     output wire [10:0] x,
     output wire [10:0] y,
-    output wire [7:0] gb_x,
-    output wire [7:0] gb_y,
-    output wire gb_en,
-    output wire gb_grid,
     output reg enable
     //output [19:0] address
     );
@@ -61,12 +57,6 @@ module vga_timing(
     reg [2:0] h_div;
     reg [2:0] v_div;
 
-    reg [7:0] gb_x_count;
-    reg [7:0] gb_y_count;
-    
-    reg gb_x_grid;
-    reg gb_y_grid;
-
     reg vsi_last;
     
     wire reset = vsi | rst;
@@ -75,24 +65,18 @@ module vga_timing(
         if(reset) begin
             h_count <= 0;
             h_div <= 0;
-            gb_x_count <= 0;
-            gb_x_grid <= 0;
         end
         else begin
             if(h_count == H_TOTAL - 1) begin
                 h_count <= 0;
-                gb_x_count <= 0;
                 h_div <= 2'b00;
             end 
             else begin
                 h_count <= h_count + 1'b1;
                 if (h_div == 2'b10) begin
                     h_div <= 2'b00;
-                    gb_x_count <= gb_x_count + 1'b1;
-                    gb_x_grid <= 1'b1;
                 end
                 else begin
-                    gb_x_grid <= 1'b0;
                     h_div <= h_div + 1'b1;
                 end
             end
@@ -104,7 +88,6 @@ module vga_timing(
             hs <= 1;
             v_count <= 0;
             v_div <= 2'b01;
-            gb_y_count <= 0;
             vs <= 1;
         end
         else begin   
@@ -115,18 +98,14 @@ module vga_timing(
                 hs <= 1'b1;
                 if(v_count == V_TOTAL - 1) begin
                     v_count <= 0;
-                    gb_y_count <= 0;
                     v_div <= 2'b01;
                 end 
                 else begin
                     v_count <= v_count + 1'b1;
                     if (v_div == 2'b10) begin
                         v_div <= 2'b00;
-                        gb_y_grid <= 1'b1;
-                        gb_y_count <= gb_y_count + 1'b1;
                     end
                     else begin
-                        gb_y_grid <= 1'b0;
                         v_div <= v_div + 1'b1;
                     end
                 end
@@ -140,13 +119,6 @@ module vga_timing(
 
     assign x = (h_count >= H_BLANK) ? (h_count - H_BLANK) : 11'h0;
     assign y = (v_count >= V_BLANK) ? (v_count - V_BLANK) : 11'h0;
-    wire gb_x_valid = (x > 11'd78)&&(x <= 11'd558);
-    wire gb_y_valid = (y >= 11'd24)&&(y < 11'd456);
-    assign gb_en = (gb_x_valid)&&(gb_y_valid);
-    assign gb_grid = (gb_x_grid)||(gb_y_grid);
-    assign gb_x = (gb_en) ? (gb_x_count - 8'd77) : (8'h0);
-    //assign gb_y = (gb_en) ? (gb_y_count - 8'd24) : (8'h0);
-    assign gb_y = (gb_y_valid) ? (gb_y_count - 8'd23) : (8'h0); // Y should be always available during the period
     //assign address = y * H_ACT + x;
     wire enable_early = (((h_count >= H_BLANK) && (h_count < H_TOTAL))&&
                                      ((v_count >= V_BLANK) && (v_count < V_TOTAL)));    //One pixel shift
@@ -156,6 +128,5 @@ module vga_timing(
         enable <= enable_delay;
         enable_delay <= enable_early;
     end
-
 
 endmodule
