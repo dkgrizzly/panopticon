@@ -10,7 +10,7 @@ means.
 MEMORY
 {
     FLASH (xr)  : ORIGIN = 0x0E000000, LENGTH = 0x20000
-    RAM (xrw)   : ORIGIN = 0x0C000000, LENGTH = 0x1000000
+    RAM (xrw)   : ORIGIN = 0x0CF80000, LENGTH = 0x80000
 }
 
 
@@ -49,6 +49,17 @@ SECTIONS {
         *(.sdata*)          /* .sdata* sections */
         . = ALIGN(4);
         _edata = .;        /* define a global symbol at data end; used by startup code in order to initialise the .data section in RAM */
+    } >RAM
+
+    /* IRQ Handler Storage */
+    .irqdata :
+    {
+        . = ALIGN(4);
+        _sirqdata = .;
+        *(.irqdata)
+        *(.irqdata*)
+        . = ALIGN(4);
+        _eirqdata = .;
     } >RAM
 
     /* Uninitialized data section */

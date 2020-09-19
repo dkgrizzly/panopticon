@@ -10,8 +10,11 @@ XC3SPROG_BIT_FILE := $(TOPDIR)/fpga/xc3sprog/pano_g1.bit
 BIN2MIF := $(TOPDIR)/tools/bin2mif/bin2mif
 BIN2C := $(TOPDIR)/tools/bin2c/bin2c
 BIT_FILE := $(TOPDIR)/xilinx/work/pano_top.bit
-FW_BIN := $(TOPDIR)/fw/firmware/firmware.bin
-MCS_FILE := $(TOPDIR)/xilinx/pano_z80.mcs
+FW_BIN := $(TOPDIR)/fw/panoboot/firmware.bin
+MCS_FILE := $(TOPDIR)/xilinx/panopticon.mcs
+
+$(FW_BIN): fw/panoboot/*.c fw/panoboot/*.h
+	make -C $(TOPDIR)/fw/panoboot
 
 prog_msc:  $(MCS_FILE)
 	$(XC3SPROG) $(XC3SPROG_OPTS) -I$(XC3SPROG_BIT_FILE) $(MCS_FILE):W:0:MCS

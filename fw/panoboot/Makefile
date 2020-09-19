@@ -2,10 +2,10 @@ PATH := /opt/riscv32i/bin:$(PATH)
 
 TOPDIR := ../..
 
-OBJS = start.o firmware.o stdlib.o isp1760.o i2c.o misc.o ff.o
-OBJS += ffsystem.o diskio.o hsvcolor.o pixels.o pano_io.o usb.o usb_storage.o printf.o usb_kbd.o
-OBJS += vt100.o
-
+INCLUDES = -I../lib/sys -I../lib/usb -I../lib/gpu -I../lib/vt100 -I../lib/audio -I../lib/fatfs
+OBJS = start.o firmware.o irq_handler.o
+LDFLAGS  = -L../lib/sys -L../lib/usb -L../lib/gpu -L../lib/vt100 -L../lib/audio -L../lib/fatfs
+LDFLAGS += -lfatfs -lusb -lgpu -lvt100 -lsys -lgcc
 CFLAGS = -MD -O1 -march=rv32ic -ffreestanding -nostdlib -Wl,--no-relax
 TOOLCHAIN_PREFIX = riscv32-unknown-elf-
 
@@ -28,13 +28,13 @@ firmware.mif: firmware.bin $(BIN2MIF)
 	cp firmware.mif ../../fpga
 
 firmware.elf: $(OBJS) sections.lds
-	$(TOOLCHAIN_PREFIX)gcc $(CFLAGS) -Wl,-Bstatic,-T,sections.lds,-Map,firmware.map,--strip-debug -o $@ $(OBJS) -lgcc
+	$(TOOLCHAIN_PREFIX)gcc $(CFLAGS) -Wl,-Bstatic,-T,sections.lds,-Map,firmware.map,--strip-debug -o $@ $(OBJS) $(LDFLAGS)
 	size $@
 
 %.o: %.c
-	$(TOOLCHAIN_PREFIX)gcc -c $(CFLAGS) $<
+	$(TOOLCHAIN_PREFIX)gcc -c $(CFLAGS) $(INCLUDES) $<
 
-%.o: %.s
+%.o: %.S
 	$(TOOLCHAIN_PREFIX)gcc -c $(CFLAGS) $<
 
 prog: firmware.bin

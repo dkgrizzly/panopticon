@@ -29,16 +29,66 @@
 #include <string.h>
 #include "misc.h"
 #include "usb.h"
+#include "usb_gamepad.h"
 #include "pano_io.h"
 #include "ff.h"
 #include "vt100.h"
 #include "hsvcolor.h"
+#include "sincos.h"
 
-// #define LOG_TO_SERIAL
-#define LOG_TO_BOTH
-// #define DEBUG_LOGGING
-// #define VERBOSE_DEBUG_LOGGING
+//#define LOG_TO_SERIAL
+//#define LOG_TO_BOTH
+//#define DEBUG_LOGGING
+//#define VERBOSE_DEBUG_LOGGING
 #include "log.h"
+#include "font.h"
+#include "logo.h"
+#include "palette.h"
+
+void InitFont()
+{
+  uint16_t x,y;
+  for(y = (235*8); y < (256*8); y++) {
+    for(x = 0; x < 8; x++) {
+      uint32_t b = (((font_8x8[y-(236*8)])>>x) & 1) ? 1 : 0;
+      FONT_RAM[(y*8)+(7-x)] = b;
+    }
+  }
+}
+
+void InitSprites()
+{
+  uint16_t i;
+  for(i = 0; i < sizeof(spr_8x8); i++) {
+    uint32_t b = spr_8x8[i];
+    SPRITE_IMG[i] = b;
+  }
+  for(i = 0; i < SPR_OAM_COUNT; i++) {
+    SPR_OAM_ATTR0(i) = SPR_DISABLE;
+  }
+}
+
+void InitLogo()
+{
+  uint16_t i;
+  for(i = 0; i < LOGO_TILES_SIZE; i++) {
+    uint32_t b = logo_tiles[i];
+    BACKGROUND_IMG[i] = b;
+  }
+  for(i = 0; i < LOGO_MAP_SIZE; i++) {
+    uint32_t b = logo_map[i];
+    BACKGROUND_RAM[i] = b;
+  }
+}
+
+void InitPalette()
+{
+  uint16_t i;
+  for(i = 0; i < PALETTE_SIZE; i++) {
+    uint32_t c = stock_palette[i];
+    PALETTE_RAM[i] = c;
+  }
+}
 
 #define F1_KEY   1  // F1
 #define F2_KEY   2  // F2
@@ -50,22 +100,36 @@
 #define F8_KEY   8  // F8
 unsigned char gFunctionRequest;
 
+unsigned char gMouseRequest;
+
+unsigned char oldMouseButtons = 0;
+unsigned char newMouseButtons = 0;
+
+unsigned char mouseButtonsPressed = 0;
+unsigned char mouseButtonsReleased = 0;
+unsigned char mouseButtonsHeld = 0;
+
+int newMouseOffsetX = 0;
+int newMouseOffsetY = 0;
+
+extern uint16_t VideoWidth;
+extern uint16_t VideoHeight;
+
+uint16_t mouse_x = 0;
+uint16_t mouse_y = 0;
+uint16_t desktop_x = 0;
+uint16_t desktop_y = 40;
+uint16_t desktop_w = 640;
+uint16_t desktop_h = 400;
+
 void IdlePoll();
-void LoadInitProg(void);
+
 void HandleFunctionKey(int Function);
+void HandleMouse();
 
-void irq_handler(uint32_t pc)
-{
-   ELOG("HARD FAULT PC = 0x%08x\n",pc);
-   leds = LED_BLUE;  // "blue screen of death"
-   while(1);
-}
-
-void movespr(int x, int y, int v) {
-    SPR_OAM_ATTR0(0) = (v ? 0 : SPR_DISABLE) | SPR_X(x) | SPR_Y(y) | SPR_MODE(0) | SPR_16_COLOR | SPR_SHAPE_SQUARE;
-    SPR_OAM_ATTR1(0) = SPR_SIZE(0) | SPR_NAME(0) | SPR_PALETTE(1);
-    SPR_OAM_ATTR0(1) = SPR_DISABLE;
-    SPR_OAM_ATTR1(1) = 0;
+void MoveMouse() {
+  SPR_OAM_ATTR0(0) = SPR_X(mouse_x) | SPR_Y(mouse_y) | SPR_MODE(0) | SPR_16_COLOR | SPR_SHAPE_SQUARE;
+  SPR_OAM_ATTR1(0) = SPR_SIZE(1) | SPR_NAME(12) | SPR_PALETTE(14);
 }
 
 void main()
@@ -76,87 +140,94 @@ void main()
    FRESULT res;
    const char root[] = "USB:/";
    char directory[18] = "";
-   char DriveSave;
-   uint8_t LastIoState = 0xff;
-   uint32_t IoState;
-   uint32_t Timeout;
-   bool bWasHalted = false;
-   HsvColor hsv = { 0, 255, 127 };
-   RgbColor rgb = { 0, 0, 0 };
-   uint16_t i;
 
    dly_tap = 0x03;
-
-   // Set interrupt mask to zero (enable all interrupts)
-   // This is a PicoRV32 custom instruction
-   asm(".word 0x0600000b");
 
    leds = LED_RED;
 
    // Disable all video layers while initializing palette and font data
    VID_MODE = 0;
 
-   InitPalette();
+//   InitVideo(1024,768,75);
+   InitVideo(800,600,60);
+//   InitVideo(640,480,60);
+//   InitVideo(320,480,60);
+
+// Boot Logo shown while USB is initialized
+   uint16_t OffsetX = (VideoWidth-512)/2;
+   uint16_t OffsetY = (VideoHeight-192)/2;
+
+   BG0_BORDER = 0;
+   BG1_BORDER = 0;
+   BG1_SCR_X = OffsetX;
+   BG1_SCR_Y = OffsetY;
+   BG1_WIN_X = ((512 + OffsetX) << 16) | OffsetX;
+   BG1_WIN_Y = ((128 + OffsetY) << 16) | OffsetY;
+
+   InitLogo();
+
+   WaitVSync(1);
+   PALETTE_RAM[0] = 0x000000;
+   PALETTE_RAM[1] = 0xffffff;
+
+   // Set up a 64x64 Tilemap for Boot Logo
+   VID_MODE = VID_MODE_BG1_EN | VID_MODE_BG1_SIZE(2) | VID_MODE_BG1_SCALE(0) | VID_MODE_BG1_PRIORITY(0);
+   WaitVSync(0);
+
    InitFont();
    InitSprites();
 
-   BG0_SCR_Y = 40;
-
-   // Set up a 80x25 Text Console (Scaled to 640x400), 64x64 Tilemap (Scale2x), Sprite for Cursor
-   VID_MODE =
-       VID_MODE_SPR_EN | VID_MODE_SPR_PRIORITY(0) |
-       VID_MODE_BG0_EN | VID_MODE_BG0_SIZE(0) | VID_MODE_BG0_SCALE(0) | VID_MODE_BG0_PRIORITY(1)
-       | VID_MODE_BG1_EN | VID_MODE_BG1_SIZE(2) | VID_MODE_BG1_SCALE(3) | VID_MODE_BG1_PRIORITY(2)
-   ;
-
    vt100_init();
-   ALOG_R("\x1b[40m\x1b[H\x1b[2J");
-   for(i = 0 ; i < 256; i++) {
-     ALOG_R("\x1b[%d;%dH\x1b[48;5;%dm  ", ((i >> 4)<<1)+5, ((i & 0xf)<<1)+44, i);
-     ALOG_R("\x1b[%d;%dH  ", ((i >> 4)<<1)+6, ((i & 0xf)<<1)+44, i);
-   }
-   ALOG_R("\x1b[40;37;1m");
-   for(i = ' ' ; i < 256; i++) {
-     ALOG_R("\x1b[%d;%dH%c", ((i >> 4)<<1)+5, ((i & 0xf)<<1)+9, i);
-   }
-   ALOG_R("\x1b[H");
-   ALOG_R("\x1b[47;30;1m\x1b[1J Pano Logic G1 - ");
-   ALOG_R("\x1b[38;5;240mP");
-   ALOG_R("\x1b[38;5;241mi");
-   ALOG_R("\x1b[38;5;242mc");
-   ALOG_R("\x1b[38;5;243mo");
-   ALOG_R("\x1b[38;5;244mR");
-   ALOG_R("\x1b[38;5;245mV");
-   ALOG_R("\x1b[38;5;246m3");
-   ALOG_R("\x1b[38;5;247m2");
-   ALOG_R("\x1b[38;5;248m @ ");
-   ALOG_R("\x1b[38;5;249m2");
-   ALOG_R("\x1b[38;5;250m5");
-   ALOG_R("\x1b[38;5;251mM");
-   ALOG_R("\x1b[38;5;252mH");
-   ALOG_R("\x1b[38;5;253mz");
-   ALOG_R("\x1b[47;30;1m - Compiled " __DATE__ " " __TIME__ "\x1b[1;76H\xee \xf8\n\x1b[0m\n");
+   usb_init();
+   drv_usb_hid_init();
+   usb_stor_scan(1);
+//   drv_usb_gp_init();
+
+   // Set interrupt mask to zero (enable all interrupts)
+   // This is a PicoRV32 custom instruction
+   asm(".word 0x0600000b");
+
    leds = LED_GREEN;
 
-   for(;;)
-   for(i=0; i<32768; i++) {
-      hsv.h = i >> 5;
-      rgb = HsvToRgb(hsv);
-      for(int x = 0; x < 15; x++) {
-      PALETTE_RAM[240+x] = (rgb.r << 16) | (rgb.g << 8) | (rgb.b);
-      hsv.h += 8;
-      rgb = HsvToRgb(hsv);
-      }
-      PALETTE_RAM[255] = (rgb.r << 16) | (rgb.g << 8) | (rgb.b);
+   WaitVSync(1);
 
-      movespr((i & 63) + 8, ((i >> 6) & 63) + 8, i >> 8);
-   }
+   desktop_w = 640;
+   desktop_h = 400;
+   desktop_x = (VideoWidth - desktop_w)/2;
+   desktop_y = (VideoHeight - desktop_h)/2;
+
+   // Place the mouse at the center of the screen
+   mouse_x = desktop_x + (desktop_w / 2);
+   mouse_y = desktop_y + (desktop_h / 2);
+
+   //MoveMouse();
+
+   BG0_SCR_X = desktop_x;
+   BG0_SCR_Y = desktop_y;
+   BG0_WIN_X = ((desktop_w + desktop_x) << 16) | desktop_x;
+   BG0_WIN_Y = ((desktop_h + desktop_y) << 16) | desktop_y;
+
+   VID_MODE = 0
+//       | VID_MODE_SPR_EN | VID_MODE_SPR_PRIORITY(0)
+       | VID_MODE_BG0_EN | VID_MODE_BG0_SIZE(0) | VID_MODE_BG0_SCALE(0) | VID_MODE_BG0_PRIORITY(1)
+   ;
    InitPalette();
 
-   for(;;);
+   BG0_BORDER = 255;
 
-   usb_init();
-   drv_usb_kbd_init();
+   for(;;) {
+      WaitVSync(1);
+
+      //MoveMouse();
+      //VID_HSYNCIRQ = 240;
+
+      WaitVSync(0);
+
+      IdlePoll();
+//      if(usb_kbd_testc()) {
+         //usb_kbd_getc() & 0x7f
+//      }
+   }
 
 #if 0
    do {
@@ -200,16 +271,8 @@ void main()
    } while(false);
 #endif
 
-   for( ; ; ) {
-      IdlePoll();
-      if(usb_kbd_testc()) {
-         //usb_kbd_getc() & 0x7f
-         //z80_con_status = 0xff;  // console input ready
-      }
-   }
-
    leds = LED_BLUE;  // "blue screen of death"
-   while(1);
+   for(;;);
 }
 
 void FunctionKeyCB(unsigned char Function)
@@ -218,16 +281,45 @@ void FunctionKeyCB(unsigned char Function)
    gFunctionRequest = Function;
 }
 
+void MouseCB(unsigned char Buttons, int OffsetX, int OffsetY)
+{
+   newMouseButtons = Buttons;
+   newMouseOffsetX = OffsetX;
+   newMouseOffsetY = OffsetY;
+   gMouseRequest = 1;
+}
+
+void HandleMouse()
+{
+   mouseButtonsHeld = oldMouseButtons & newMouseButtons;
+   mouseButtonsPressed = (oldMouseButtons ^ newMouseButtons) & ~oldMouseButtons;
+   mouseButtonsReleased = (oldMouseButtons ^ newMouseButtons) & oldMouseButtons;
+   mouse_x += newMouseOffsetX;
+   mouse_y += newMouseOffsetY;
+   if(mouse_x < desktop_x)
+     mouse_x = desktop_x;
+   if(mouse_x > (desktop_x + desktop_w - 1))
+     mouse_x = desktop_x + desktop_w - 1;
+   if(mouse_y < desktop_y)
+     mouse_y = desktop_y;
+   if(mouse_y > (desktop_y + desktop_h - 1))
+     mouse_y = desktop_y + desktop_h - 1;
+}
+
 void HandleFunctionKey(int Function)
 {
    switch(Function) {
       case F1_KEY:
+         mouse_x--;
          break;
       case F2_KEY:
+         mouse_x++;
          break;
       case F3_KEY:
+         mouse_y--;
          break;
       case F4_KEY:
+         mouse_y++;
          break;
       case F5_KEY:
          break;
@@ -246,5 +338,14 @@ void IdlePoll()
    if(gFunctionRequest != 0) {
       HandleFunctionKey(gFunctionRequest);
       gFunctionRequest = 0;
+   }
+   if(gMouseRequest != 0) {
+      HandleMouse();
+      gMouseRequest = 0;
+   }
+   if(gp_num_analogs >= 2) {
+      newMouseOffsetX = gp_analog[0];
+      newMouseOffsetY = gp_analog[1];
+      HandleMouse();
    }
 }

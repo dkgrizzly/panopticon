@@ -19,98 +19,134 @@
 //
 //////////////////////////////////////////////////////////////////////////////////
 module sprite(
-    input [63:0] attributes,
-    input [10:0] vga_x,
-    input [10:0] vga_y,
-    output [14:0] tile_addr,
-    output [3:0] spr_pal,
-    output visible
+    input wire vga_clk,
+    input wire [31:0] attr0,
+    input wire [31:0] attr1,
+    input wire [10:0] vga_x,
+    input wire [10:0] vga_y,
+    output reg [14:0] tile_addr,
+    output reg [3:0] spr_pal,
+    output reg visible
     );
 
-    wire [10:0] spr_x = attributes[21:11];
-    wire [10:0] spr_y = attributes[10:0];
+    wire [10:0] spr_x = attr0[10:0];
+    wire [10:0] spr_y = attr0[21:11];
 
-    wire spr_rotscale = attributes[22];
-    wire spr_double = attributes[23];
-    wire spr_disable = attributes[23];
+    wire spr_rotscale = attr0[22];
+    wire spr_double = attr0[23];
+    wire spr_disable = attr0[23];
 
-    wire [1:0] spr_mode = attributes[25:24];
-    wire spr_256 = attributes[26];
-    wire [1:0] spr_shape = attributes[28:27];
+    wire [1:0] spr_mode = attr0[25:24];
+    wire spr_256 = attr0[26];
+    wire [1:0] spr_shape = attr0[28:27];
 
-    wire spr_flipx = attributes[32];
-    wire spr_flipy = attributes[33];
+    wire spr_flipx = attr1[0];
+    wire spr_flipy = attr1[1];
 
-    wire [1:0] spr_size = attributes[35:34];
+    wire [1:0] spr_size = attr1[3:2];
 
-    wire [7:0] spr_name = attributes[43:36];
-    assign spr_pal = attributes[47:44];
+    wire [9:0] spr_name = attr1[13:4];
 
-    wire spr_w = 8;/*
-      ((spr_size == 2'd0) ? (
-        ((spr_shape == 2'd1) ? (16) :
-        (8))
-      ) :
-      ((spr_size == 2'd1) ? (
-        ((spr_shape == 2'd2) ? (8) :
-        ((spr_shape == 2'd1) ? (32) :
-        (16)))
-      ) :
-      ((spr_size == 2'd2) ? (
-        ((spr_shape == 2'd2) ? (16) :
-        ((spr_shape == 2'd1) ? (32) :
-        (32)))
-      ) :
-        ((spr_shape == 2'd2) ? (32) :
-        ((spr_shape == 2'd1) ? (64) :
-        (64))))));*/
-    wire spr_h = 8;/*
-      ((spr_size == 2'd0) ? (
-        ((spr_shape == 2'd2) ? (16) :
-        (8))
-      ) :
-      ((spr_size == 2'd1) ? (
-        ((spr_shape == 2'd1) ? (8) :
-        ((spr_shape == 2'd2) ? (32) :
-        (16)))
-      ) :
-      ((spr_size == 2'd2) ? (
-        ((spr_shape == 2'd1) ? (16) :
-        ((spr_shape == 2'd2) ? (32) :
-        (32)))
-      ) :
-        ((spr_shape == 2'd1) ? (32) :
-        ((spr_shape == 2'd2) ? (64) :
-        (64))))));*/
+    reg [10:0] spr_w;
+    reg [10:0] spr_h;
         
     // TODO: Sprite Flipping, Rotation, & Scaling
-    wire [10:0] spr_px = (vga_x - spr_x);
-    wire [10:0] spr_py = (vga_y - spr_y);
-    wire [3:0] spr_offset = 0; /*
-      ((spr_size == 2'd0) ? (
-        ((spr_shape == 2'd1) ? (spr_x[4]) :
-        ((spr_shape == 2'd2) ? (spr_y[4]) :
-        (0)))
-      ) :
-      ((spr_size == 2'd1) ? (
-        ((spr_shape == 2'd1) ? (spr_x[5:4]) :
-        ((spr_shape == 2'd2) ? (spr_y[5:4]) :
-        ((spr_y[4] << 1) | spr_x[4])))
-      ) :
-      ((spr_size == 2'd2) ? (
-        ((spr_shape == 2'd1) ? ((spr_y[4] << 2) | spr_x[5:4]) :
-        ((spr_shape == 2'd2) ? ((spr_y[5:4] << 1) | spr_x[4]):
-        ((spr_y[5:4] << 2) | spr_x[5:4])))
-      ) :
-        ((spr_shape == 2'd1) ? ((spr_y[5:4] << 3) | spr_x[6:4]) :
-        ((spr_shape == 2'd2) ? ((spr_y[6:4] << 2) | spr_x[5:4]) :
-        ((spr_y[6:4] << 3) | spr_x[6:4]))))));*/
-    
-    assign visible = 
+    wire [10:0] spr_ox = (vga_x[10:0] - spr_x[10:0]);
+    wire [10:0] spr_px = spr_flipx ? (spr_w[10:0] - (spr_ox[10:0] + 10'd1)) : (spr_ox[10:0]);
+    wire [10:0] spr_oy = (vga_y[10:0] - spr_y[10:0]);
+    wire [10:0] spr_py = spr_flipy ? (spr_h[10:0] - (spr_oy[10:0] + 10'd1)) : (spr_oy[10:0]);
+
+    always @(posedge vga_clk)
+    begin
+        spr_pal <= attr1[19:16];
+        visible <= 
             (((spr_rotscale) | (~spr_disable)) &
-            (vga_x >= spr_x) & (vga_x < (spr_x + spr_w)) &
-            (vga_y >= spr_y) & (vga_y < (spr_y + spr_h))) ? 1'b1 : 1'b0;
-    assign tile_addr = 
-            ((spr_name + spr_offset) << 6) | (spr_y[3:0] << 4) | spr_x[3:0];
+            (vga_x[10:0] >= spr_x[10:0]) && (vga_x[10:0] < (spr_x[10:0] + spr_w[10:0])) &&
+            (vga_y[10:0] >= spr_y[10:0]) && (vga_y[10:0] < (spr_y[10:0] + spr_h[10:0])));
+        spr_w[10:0] <= 8;
+        spr_h[10:0] <= 8;
+        case ( { spr_shape[1:0], spr_size[1:0] } )
+            4'b0000: begin
+                spr_w[10:0] <= 8;
+                spr_h[10:0] <= 8;
+                tile_addr[14:0] <= (spr_name[6:0] << 6) | (spr_py[2:0] << 3) | spr_px[2:0];
+            end
+            4'b0001: begin
+                spr_w[10:0] <= 16;
+                spr_h[10:0] <= 16;
+                tile_addr[14:0] <= ((spr_name[6:0] + ((spr_py[3] << 1) | spr_px[3])) << 6) | (spr_py[2:0] << 3) | spr_px[2:0];
+            end
+            4'b0010: begin
+                spr_w[10:0] <= 32;
+                spr_h[10:0] <= 32;
+                tile_addr[14:0] <= ((spr_name[6:0] + ((spr_py[4:3] << 2) | spr_px[4:3])) << 6) | (spr_py[2:0] << 3) | spr_px[2:0];
+            end
+            4'b0011: begin
+                spr_w[10:0] <= 64;
+                spr_h[10:0] <= 64;
+                tile_addr[14:0] <= ((spr_name[6:0] + ((spr_py[5:3] << 3) | spr_px[5:3])) << 6) | (spr_py[2:0] << 3) | spr_px[2:0];
+            end
+            4'b0100: begin
+                spr_w[10:0] <= 8;
+                spr_h[10:0] <= 16;
+                tile_addr[14:0] <= ((spr_name[6:0] + spr_py[3]) << 6) | (spr_py[2:0] << 3) | spr_px[2:0];
+            end
+            4'b0101: begin
+                spr_w[10:0] <= 8;
+                spr_h[10:0] <= 32;
+                tile_addr[14:0] <= ((spr_name[6:0] + spr_py[4:3]) << 6) | (spr_py[2:0] << 3) | spr_px[2:0];
+            end
+            4'b0110: begin
+                spr_w[10:0] <= 16;
+                spr_h[10:0] <= 32;
+                tile_addr[14:0] <= ((spr_name[6:0] + ((spr_py[4:3] << 1) | spr_px[3])) << 6) | (spr_py[2:0] << 3) | spr_px[2:0];
+            end
+            4'b0111: begin
+                spr_w[10:0] <= 32;
+                spr_h[10:0] <= 64;
+                tile_addr[14:0] <= ((spr_name[6:0] + ((spr_py[5:3] << 2) | spr_px[4:3])) << 6) | (spr_py[2:0] << 3) | spr_px[2:0];
+            end
+            4'b1000: begin
+                spr_w[10:0] <= 16;
+                spr_h[10:0] <= 8;
+                tile_addr[14:0] <= ((spr_name[6:0] + spr_px[3]) << 6) | (spr_py[2:0] << 3) | spr_px[2:0];
+            end
+            4'b1001: begin
+                spr_w[10:0] <= 32;
+                spr_h[10:0] <= 8;
+                tile_addr[14:0] <= ((spr_name[6:0] + spr_px[4:3]) << 6) | (spr_py[2:0] << 3) | spr_px[2:0];
+            end
+            4'b1010: begin
+                spr_w[10:0] <= 32;
+                spr_h[10:0] <= 16;
+                tile_addr[14:0] <= ((spr_name[6:0] + ((spr_py[3] << 2) | spr_px[4:3])) << 6) | (spr_py[2:0] << 3) | spr_px[2:0];
+            end
+            4'b1011: begin
+                spr_w[10:0] <= 64;
+                spr_h[10:0] <= 32;
+                tile_addr[14:0] <= ((spr_name[6:0] + ((spr_py[4:3] << 3) | spr_px[5:3])) << 6) | (spr_py[2:0] << 3) | spr_px[2:0];
+            end
+            4'b1100: begin
+                spr_w[10:0] <= 8;
+                spr_h[10:0] <= 8;
+                tile_addr[14:0] <= (spr_name[6:0] << 6) | (spr_py[2:0] << 3) | spr_px[2:0];
+            end
+            4'b1101: begin
+                spr_w[10:0] <= 8;
+                spr_h[10:0] <= 8;
+                tile_addr[14:0] <= (spr_name[6:0] << 6) | (spr_py[2:0] << 3) | spr_px[2:0];
+            end
+            4'b1110: begin
+                spr_w[10:0] <= 8;
+                spr_h[10:0] <= 8;
+                tile_addr[14:0] <= (spr_name[6:0] << 6) | (spr_py[2:0] << 3) | spr_px[2:0];
+            end
+            4'b1111: begin
+                spr_w[10:0] <= 8;
+                spr_h[10:0] <= 8;
+                tile_addr[14:0] <= (spr_name[6:0] << 6) | (spr_py[2:0] << 3) | spr_px[2:0];
+            end
+        endcase
+    end
 
 endmodule
