@@ -3,13 +3,15 @@
 
 .section .text
 
+.global start
 start:
-
 j boot
 nop
 nop
 nop
 
+.align(4)
+.global irq
 irq:
 #.word 0x0000450B
 addi a0, gp, 0

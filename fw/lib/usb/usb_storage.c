@@ -50,6 +50,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <stdbool.h>
 #include <string.h>
 
 #include "misc.h"
@@ -57,7 +59,8 @@
 //
 //#define DEBUG_LOGGING
 // #define VERBOSE_DEBUG_LOGGING
-#define LOG_TO_SERIAL
+//#define LOG_TO_SERIAL
+#define LOGGING_DISABLED
 #include "log.h"
 
 
@@ -75,7 +78,7 @@
 /* direction table -- this indicates the direction of the data
  * transfer for each command code -- a 1 indicates input
  */
-const unsigned char us_direction[256/8] = {
+const uint8_t us_direction[256/8] = {
    0x28, 0x81, 0x14, 0x14, 0x20, 0x01, 0x90, 0x77,
    0x0C, 0x20, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00,
    0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01,
@@ -127,32 +130,32 @@ typedef struct {
 } umass_bbb_csw_t;
 #define UMASS_BBB_CSW_SIZE 13
 
-static int usb_max_devs; /* number of highest available usb device */
+static int32_t usb_max_devs; /* number of highest available usb device */
 
 static block_dev_desc_t usb_dev_desc[USB_MAX_STOR_DEV];
 
 struct us_data;
-typedef int (*trans_cmnd)(ccb *cb, struct us_data *data);
-typedef int (*trans_reset)(struct us_data *data);
+typedef int32_t (*trans_cmnd)(ccb *cb, struct us_data *data);
+typedef int32_t (*trans_reset)(struct us_data *data);
 
 struct us_data {
    struct usb_device *pusb_dev;   /* this usb_device */
 
-   unsigned int   flags;         /* from filter initially */
-   unsigned char  ifnum;         /* interface number */
-   unsigned char  ep_in;         /* in endpoint */
-   unsigned char  ep_out;        /* out ....... */
-   unsigned char  ep_int;        /* interrupt . */
-   unsigned char  subclass;      /* as in overview */
-   unsigned char  protocol;      /* .............. */
-   unsigned char  attention_done;      /* force attn on first cmd */
-   unsigned short ip_data;    /* interrupt data */
-   int      action;        /* what to do */
-   int      ip_wanted;     /* needed */
-   int      *irq_handle;      /* for USB int requests */
-   unsigned int   irqpipe;    /* pipe for release_irq */
-   unsigned char  irqmaxp;    /* max packed for irq Pipe */
-   unsigned char  irqinterval;      /* Intervall for IRQ Pipe */
+   uint32_t   flags;         /* from filter initially */
+   uint8_t  ifnum;         /* interface number */
+   uint8_t  ep_in;         /* in endpoint */
+   uint8_t  ep_out;        /* out ....... */
+   uint8_t  ep_int;        /* interrupt . */
+   uint8_t  subclass;      /* as in overview */
+   uint8_t  protocol;      /* .............. */
+   uint8_t  attention_done;      /* force attn on first cmd */
+   uint16_t ip_data;    /* interrupt data */
+   int32_t      action;        /* what to do */
+   int32_t      ip_wanted;     /* needed */
+   int32_t      *irq_handle;      /* for USB int32_t requests */
+   uint32_t   irqpipe;    /* pipe for release_irq */
+   uint8_t  irqmaxp;    /* max packed for irq Pipe */
+   uint8_t  irqinterval;      /* Intervall for IRQ Pipe */
    ccb      *srb;       /* current srb */
    trans_reset transport_reset;  /* reset routine */
    trans_cmnd  transport;     /* transport routine */
@@ -165,18 +168,18 @@ static struct us_data usb_stor[USB_MAX_STOR_DEV];
 #define USB_STOR_TRANSPORT_FAILED -1
 #define USB_STOR_TRANSPORT_ERROR  -2
 
-int usb_stor_get_info(struct usb_device *dev, struct us_data *us,
+int32_t usb_stor_get_info(struct usb_device *dev, struct us_data *us,
             block_dev_desc_t *dev_desc);
-int usb_storage_probe(struct usb_device *dev, unsigned int ifnum,
+int32_t usb_storage_probe(struct usb_device *dev, uint32_t ifnum,
             struct us_data *ss);
-unsigned long usb_stor_read(int device, unsigned long blknr,
+unsigned long usb_stor_read(int32_t device, unsigned long blknr,
              unsigned long blkcnt, void *buffer);
-static unsigned long usb_stor_write(int device, unsigned long blknr,
+static unsigned long usb_stor_write(int32_t device, unsigned long blknr,
                 unsigned long  blkcnt, const void *buffer);
-struct usb_device * usb_get_dev_index(int index);
+struct usb_device * usb_get_dev_index(int32_t index);
 void uhci_show_temp_int_td(void);
 
-block_dev_desc_t *usb_stor_get_dev(int index)
+block_dev_desc_t *usb_stor_get_dev(int32_t index)
 {
    return (index < USB_MAX_STOR_DEV) ? &usb_dev_desc[index] : NULL;
 }
@@ -192,9 +195,9 @@ void usb_show_progress(void)
  * to the user if mode = 1
  * returns current device or -1 if no
  */
-int usb_stor_scan(int mode)
+int32_t usb_stor_scan(int32_t mode)
 {
-   unsigned char i;
+   uint8_t i;
    struct usb_device *dev;
 
    /* GJ */
@@ -243,7 +246,7 @@ int usb_stor_scan(int mode)
    return -1;
 }
 
-static int usb_stor_irq(struct usb_device *dev, unsigned long pipe)
+static int32_t usb_stor_irq(struct usb_device *dev, unsigned long pipe)
 {
    struct us_data *us;
    us = (struct us_data *)dev->privptr;
@@ -257,7 +260,7 @@ static int usb_stor_irq(struct usb_device *dev, unsigned long pipe)
 #ifdef   USB_STOR_DEBUG
 static void usb_show_srb(ccb *pccb)
 {
-   int i;
+   int32_t i;
    ALOG("SRB: len %d datalen 0x%lX\n ", pccb->cmdlen, pccb->datalen);
    for (i = 0; i < 12; i++)
       ALOG("%02X ", pccb->cmd[i]);
@@ -280,14 +283,14 @@ static void display_int_status(unsigned long tmp)
  * Data transfer routines
  ***********************************************************************/
 
-static int us_one_transfer(struct us_data *us, int pipe, char *buf, int length)
+static int32_t us_one_transfer(struct us_data *us, int32_t pipe, char *buf, int32_t length)
 {
-   int max_size;
-   int this_xfer;
-   int result;
-   int partial;
-   int maxtry;
-   int stat;
+   int32_t max_size;
+   int32_t this_xfer;
+   int32_t result;
+   int32_t partial;
+   int32_t maxtry;
+   int32_t stat;
 
    /* determine the maximum packet size for these transfers */
    max_size = usb_maxpacket(us->pusb_dev, pipe) * 16;
@@ -306,7 +309,7 @@ static int us_one_transfer(struct us_data *us, int pipe, char *buf, int length)
       do {
          /* transfer the data */
          LOG("Bulk xfer 0x%x(%d) try #%d\n",
-              (unsigned int)buf, this_xfer, 11 - maxtry);
+              (uint32_t)buf, this_xfer, 11 - maxtry);
          result = usb_bulk_msg(us->pusb_dev, pipe, buf,
                      this_xfer, &partial,
                      USB_CNTL_TIMEOUT * 5);
@@ -358,10 +361,10 @@ static int us_one_transfer(struct us_data *us, int pipe, char *buf, int length)
    return 0;
 }
 
-static int usb_stor_BBB_reset(struct us_data *us)
+static int32_t usb_stor_BBB_reset(struct us_data *us)
 {
-   int result;
-   unsigned int pipe;
+   int32_t result;
+   uint32_t pipe;
 
    /*
     * Reset recovery (5.3.4 in Universal Serial Bus Mass Storage Class)
@@ -413,10 +416,10 @@ static int usb_stor_BBB_reset(struct us_data *us)
  * should. Actually it should probably do what it's doing here, and
  * reset the port physically
  */
-static int usb_stor_CB_reset(struct us_data *us)
+static int32_t usb_stor_CB_reset(struct us_data *us)
 {
-   unsigned char cmd[12];
-   int result;
+   uint8_t cmd[12];
+   int32_t result;
 
    LOG("CB_reset\n");
    memset(cmd, 0xff, sizeof(cmd));
@@ -444,12 +447,12 @@ static int usb_stor_CB_reset(struct us_data *us)
  * Set up the command for a BBB device. Note that the actual SCSI
  * command is copied into cbw.CBWCDB.
  */
-int usb_stor_BBB_comdat(ccb *srb, struct us_data *us)
+int32_t usb_stor_BBB_comdat(ccb *srb, struct us_data *us)
 {
-   int result;
-   int actlen;
-   int dir_in;
-   unsigned int pipe;
+   int32_t result;
+   int32_t actlen;
+   int32_t dir_in;
+   uint32_t pipe;
    umass_bbb_cbw_t cbw;
 
    dir_in = US_DIRECTION(srb->cmd[0]);
@@ -489,11 +492,11 @@ int usb_stor_BBB_comdat(ccb *srb, struct us_data *us)
 /* FIXME: we also need a CBI_command which sets up the completion
  * interrupt, and waits for it
  */
-int usb_stor_CB_comdat(ccb *srb, struct us_data *us)
+int32_t usb_stor_CB_comdat(ccb *srb, struct us_data *us)
 {
-   int result = 0;
-   int dir_in, retry;
-   unsigned int pipe;
+   int32_t result = 0;
+   int32_t dir_in, retry;
+   uint32_t pipe;
    unsigned long status;
 
    retry = 5;
@@ -558,16 +561,16 @@ int usb_stor_CB_comdat(ccb *srb, struct us_data *us)
 }
 
 
-int usb_stor_CBI_get_status(ccb *srb, struct us_data *us)
+int32_t usb_stor_CBI_get_status(ccb *srb, struct us_data *us)
 {
-   int timeout;
+   int32_t timeout;
 
    us->ip_wanted = 1;
    submit_int_msg(us->pusb_dev, us->irqpipe,
          (void *) &us->ip_data, us->irqmaxp, us->irqinterval);
    timeout = 1000;
    while (timeout--) {
-      if ((volatile int *) us->ip_wanted == 0)
+      if ((volatile int32_t *) us->ip_wanted == 0)
          break;
       delay_ms(10);
    }
@@ -605,9 +608,9 @@ int usb_stor_CBI_get_status(ccb *srb, struct us_data *us)
 #define USB_TRANSPORT_NOT_READY_RETRY 10
 
 /* clear a stall on an endpoint - special for BBB devices */
-int usb_stor_BBB_clear_endpt_stall(struct us_data *us, uint8_t endpt)
+int32_t usb_stor_BBB_clear_endpt_stall(struct us_data *us, uint8_t endpt)
 {
-   int result;
+   int32_t result;
 
    /* ENDPOINT_HALT = 0, so set value to 0 */
    result = usb_control_msg(us->pusb_dev, usb_sndctrlpipe(us->pusb_dev, 0),
@@ -616,16 +619,16 @@ int usb_stor_BBB_clear_endpt_stall(struct us_data *us, uint8_t endpt)
    return result;
 }
 
-int usb_stor_BBB_transport(ccb *srb, struct us_data *us)
+int32_t usb_stor_BBB_transport(ccb *srb, struct us_data *us)
 {
-   int result, retry;
-   int dir_in;
-   int actlen, data_actlen;
-   unsigned int pipe, pipein, pipeout;
+   int32_t result, retry;
+   int32_t dir_in;
+   int32_t actlen, data_actlen;
+   uint32_t pipe, pipein, pipeout;
    umass_bbb_csw_t csw;
 #ifdef BBB_XPORT_TRACE
-   unsigned char *ptr;
-   int index;
+   uint8_t *ptr;
+   int32_t index;
 #endif
 
    dir_in = US_DIRECTION(srb->cmd[0]);
@@ -697,7 +700,7 @@ again:
       return USB_STOR_TRANSPORT_FAILED;
    }
 #ifdef BBB_XPORT_TRACE
-   ptr = (unsigned char *)&csw;
+   ptr = (uint8_t *)&csw;
    LOG("ptr:");
    LOG_HEX(ptr,UMASS_BBB_CSW_SIZE);
 #endif
@@ -733,12 +736,12 @@ again:
    return result;
 }
 
-int usb_stor_CB_transport(ccb *srb, struct us_data *us)
+int32_t usb_stor_CB_transport(ccb *srb, struct us_data *us)
 {
-   int result, status;
+   int32_t result, status;
    ccb *psrb;
    ccb reqsrb;
-   int retry, notready;
+   int32_t retry, notready;
 
    psrb = &reqsrb;
    status = USB_STOR_TRANSPORT_GOOD;
@@ -757,8 +760,8 @@ do_retry:
          LOG(" USB CBI Command Error\n");
          return status;
       }
-      srb->sense_buf[12] = (unsigned char)(us->ip_data >> 8);
-      srb->sense_buf[13] = (unsigned char)(us->ip_data & 0xff);
+      srb->sense_buf[12] = (uint8_t)(us->ip_data >> 8);
+      srb->sense_buf[13] = (uint8_t)(us->ip_data & 0xff);
       if (!us->ip_data) {
          /* if the status is good, report it */
          if (status == USB_STOR_TRANSPORT_GOOD) {
@@ -846,9 +849,9 @@ do_retry:
 }
 
 
-static int usb_inquiry(ccb *srb, struct us_data *ss)
+static int32_t usb_inquiry(ccb *srb, struct us_data *ss)
 {
-   int retry, i;
+   int32_t retry, i;
    retry = 5;
    do {
       memset(&srb->cmd[0], 0, 12);
@@ -869,7 +872,7 @@ static int usb_inquiry(ccb *srb, struct us_data *ss)
    return 0;
 }
 
-static int usb_request_sense(ccb *srb, struct us_data *ss)
+static int32_t usb_request_sense(ccb *srb, struct us_data *ss)
 {
    char *ptr;
 
@@ -885,13 +888,13 @@ static int usb_request_sense(ccb *srb, struct us_data *ss)
       ELOG("Request Sense returned:\n");
       ELOG_HEX(srb->sense_buf,18);
    }
-   srb->pdata = (unsigned char *)ptr;
+   srb->pdata = (uint8_t *)ptr;
    return 0;
 }
 
-static int usb_test_unit_ready(ccb *srb, struct us_data *ss)
+static int32_t usb_test_unit_ready(ccb *srb, struct us_data *ss)
 {
-   int retries = 10;
+   int32_t retries = 10;
 
    do {
       memset(&srb->cmd[0], 0, 12);
@@ -907,9 +910,9 @@ static int usb_test_unit_ready(ccb *srb, struct us_data *ss)
    return -1;
 }
 
-static int usb_read_capacity(ccb *srb, struct us_data *ss)
+static int32_t usb_read_capacity(ccb *srb, struct us_data *ss)
 {
-   int retry;
+   int32_t retry;
    /* XXX retries */
    retry = 3;
    do {
@@ -924,34 +927,34 @@ static int usb_read_capacity(ccb *srb, struct us_data *ss)
    return -1;
 }
 
-static int usb_read_10(ccb *srb, struct us_data *ss, unsigned long start,
-             unsigned short blocks)
+static int32_t usb_read_10(ccb *srb, struct us_data *ss, unsigned long start,
+             uint16_t blocks)
 {
    memset(&srb->cmd[0], 0, 12);
    srb->cmd[0] = SCSI_READ10;
-   srb->cmd[2] = ((unsigned char) (start >> 24)) & 0xff;
-   srb->cmd[3] = ((unsigned char) (start >> 16)) & 0xff;
-   srb->cmd[4] = ((unsigned char) (start >> 8)) & 0xff;
-   srb->cmd[5] = ((unsigned char) (start)) & 0xff;
-   srb->cmd[7] = ((unsigned char) (blocks >> 8)) & 0xff;
-   srb->cmd[8] = (unsigned char) blocks & 0xff;
+   srb->cmd[2] = ((uint8_t) (start >> 24)) & 0xff;
+   srb->cmd[3] = ((uint8_t) (start >> 16)) & 0xff;
+   srb->cmd[4] = ((uint8_t) (start >> 8)) & 0xff;
+   srb->cmd[5] = ((uint8_t) (start)) & 0xff;
+   srb->cmd[7] = ((uint8_t) (blocks >> 8)) & 0xff;
+   srb->cmd[8] = (uint8_t) blocks & 0xff;
    srb->cmdlen = 10;
    LOG("read10: start %lx blocks %x\n", start, blocks);
    return ss->transport(srb, ss);
 }
 
-static int usb_write_10(ccb *srb, struct us_data *ss,
-         unsigned long start, unsigned short blocks)
+static int32_t usb_write_10(ccb *srb, struct us_data *ss,
+         unsigned long start, uint16_t blocks)
 {
    memset(&srb->cmd[0], 0, 12);
    srb->cmd[0] = SCSI_WRITE10;
    srb->cmd[1] = srb->lun << 5;
-   srb->cmd[2] = ((unsigned char) (start >> 24)) & 0xff;
-   srb->cmd[3] = ((unsigned char) (start >> 16)) & 0xff;
-   srb->cmd[4] = ((unsigned char) (start >> 8)) & 0xff;
-   srb->cmd[5] = ((unsigned char) (start)) & 0xff;
-   srb->cmd[7] = ((unsigned char) (blocks >> 8)) & 0xff;
-   srb->cmd[8] = (unsigned char) blocks & 0xff;
+   srb->cmd[2] = ((uint8_t) (start >> 24)) & 0xff;
+   srb->cmd[3] = ((uint8_t) (start >> 16)) & 0xff;
+   srb->cmd[4] = ((uint8_t) (start >> 8)) & 0xff;
+   srb->cmd[5] = ((uint8_t) (start)) & 0xff;
+   srb->cmd[7] = ((uint8_t) (blocks >> 8)) & 0xff;
+   srb->cmd[8] = (uint8_t) blocks & 0xff;
    srb->cmdlen = 10;
    LOG("write10: start %lx blocks %x\n", start, blocks);
    return ss->transport(srb, ss);
@@ -969,10 +972,10 @@ static int usb_write_10(ccb *srb, struct us_data *ss,
  * block_dev_desc_t in include/part.h.
  */
 static void usb_bin_fixup(struct usb_device_descriptor descriptor,
-            unsigned char vendor[],
-            unsigned char product[]) {
-   const unsigned char max_vendor_len = 40;
-   const unsigned char max_product_len = 20;
+            uint8_t vendor[],
+            uint8_t product[]) {
+   const uint8_t max_vendor_len = 40;
+   const uint8_t max_product_len = 20;
    if (descriptor.idVendor == 0x0424 && descriptor.idProduct == 0x223a) {
       strncpy((char *)vendor, "SMSC", max_vendor_len);
       strncpy((char *)product, "Flash Media Cntrller",
@@ -984,15 +987,15 @@ static void usb_bin_fixup(struct usb_device_descriptor descriptor,
 #define USB_MAX_READ_BLK 20
 #define USB_MAX_WRITE_BLK 20
 
-unsigned long usb_stor_read(int device, unsigned long blknr,
+unsigned long usb_stor_read(int32_t device, unsigned long blknr,
              unsigned long blkcnt, void *buffer)
 {
    unsigned long start, blks, buf_addr;
-   unsigned short smallblks;
+   uint16_t smallblks;
    struct usb_device *dev;
-   int retry, i;
+   int32_t retry, i;
    ccb *srb = &usb_ccb;
-   int Err;
+   int32_t Err;
 
    if (blkcnt == 0)
       return 0;
@@ -1029,16 +1032,16 @@ unsigned long usb_stor_read(int device, unsigned long blknr,
    do {
       /* XXX need some comment here */
       retry = 2;
-      srb->pdata = (unsigned char *)buf_addr;
+      srb->pdata = (uint8_t *)buf_addr;
       if (blks > USB_MAX_READ_BLK)
          smallblks = USB_MAX_READ_BLK;
       else
-         smallblks = (unsigned short) blks;
+         smallblks = (uint16_t) blks;
 retry_it:
       if (smallblks == USB_MAX_READ_BLK)
          usb_show_progress();
       srb->datalen = usb_dev_desc[device].blksz * smallblks;
-      srb->pdata = (unsigned char *)buf_addr;
+      srb->pdata = (uint8_t *)buf_addr;
       Err = usb_read_10(srb,(struct us_data *)dev->privptr,start,smallblks);
       if(Err != 0) {
          ELOG("\nRead ERROR, usb_read_10 returned %d\n",Err);
@@ -1067,17 +1070,17 @@ retry_it:
    return blkcnt;
 }
 
-static unsigned long usb_stor_write(int device, unsigned long blknr,
+static unsigned long usb_stor_write(int32_t device, unsigned long blknr,
                 unsigned long  blkcnt, const void *buffer)
 {
    unsigned long start, blks;
    uintptr_t buf_addr;
-   unsigned short smallblks;
+   uint16_t smallblks;
    struct usb_device *udev;
-   int retry;
+   int32_t retry;
    ccb *srb = &usb_ccb;
    struct usb_device *dev;
-   int i;
+   int32_t i;
 
    if (blkcnt == 0)
       return 0;
@@ -1111,16 +1114,16 @@ static unsigned long usb_stor_write(int device, unsigned long blknr,
        * return with number of blocks written successfully.
        */
       retry = 2;
-      srb->pdata = (unsigned char *)buf_addr;
+      srb->pdata = (uint8_t *)buf_addr;
       if (blks > USB_MAX_WRITE_BLK)
          smallblks = USB_MAX_WRITE_BLK;
       else
-         smallblks = (unsigned short) blks;
+         smallblks = (uint16_t) blks;
 retry_it:
       if (smallblks == USB_MAX_WRITE_BLK)
          usb_show_progress();
       srb->datalen = usb_dev_desc[device].blksz * smallblks;
-      srb->pdata = (unsigned char *)buf_addr;
+      srb->pdata = (uint8_t *)buf_addr;
       if (usb_write_10(srb, (struct us_data *)dev->privptr, start, smallblks)) {
          ELOG("Write ERROR\n");
          usb_request_sense(srb, (struct us_data *)dev->privptr);
@@ -1148,15 +1151,15 @@ retry_it:
 }
 
 /* Probe to see if a new device is actually a Storage device */
-int usb_storage_probe(struct usb_device *dev, unsigned int ifnum,
+int32_t usb_storage_probe(struct usb_device *dev, uint32_t ifnum,
             struct us_data *ss)
 {
    struct usb_interface_descriptor *iface;
-   int i;
-   unsigned int flags = 0;
+   int32_t i;
+   uint32_t flags = 0;
 
-   int protocol = 0;
-   int subclass = 0;
+   int32_t protocol = 0;
+   int32_t subclass = 0;
 
    /* let's examine the device now */
    iface = &dev->config.if_desc[ifnum];
@@ -1255,7 +1258,7 @@ int usb_storage_probe(struct usb_device *dev, unsigned int ifnum,
          ss->irqinterval = iface->ep_desc[i].bInterval;
       }
    }
-   LOG("Endpoints In %d Out %d Int %d\n",
+   LOG("Endpoints In %d Out %d int32_t %d\n",
         ss->ep_in, ss->ep_out, ss->ep_int);
 
    /* Do some basic sanity checks, and bail if we find a problem */
@@ -1288,10 +1291,10 @@ int usb_storage_probe(struct usb_device *dev, unsigned int ifnum,
    return 1;
 }
 
-int usb_stor_get_info(struct usb_device *dev, struct us_data *ss,
+int32_t usb_stor_get_info(struct usb_device *dev, struct us_data *ss,
             block_dev_desc_t *dev_desc)
 {
-   unsigned char perq, modi;
+   uint8_t perq, modi;
    unsigned long cap[2];
    unsigned long *capacity, *blksz;
    ccb *pccb = &usb_ccb;
@@ -1353,8 +1356,8 @@ int usb_stor_get_info(struct usb_device *dev, struct us_data *ss,
    LOG("revision: %s\n",dev_desc->revision);
 
 #ifdef CONFIG_USB_BIN_FIXUP
-   usb_bin_fixup(dev->descriptor, (unsigned char *)dev_desc->vendor,
-            (unsigned char *)dev_desc->product);
+   usb_bin_fixup(dev->descriptor, (uint8_t *)dev_desc->vendor,
+            (uint8_t *)dev_desc->product);
 #endif /* CONFIG_USB_BIN_FIXUP */
    LOG("ISO Vers %x, Response Data %x\n", usb_buf[2],
          usb_buf[3]);
@@ -1369,7 +1372,7 @@ int usb_stor_get_info(struct usb_device *dev, struct us_data *ss,
       }
       return 0;
    }
-   pccb->pdata = (unsigned char *)&cap[0];
+   pccb->pdata = (uint8_t *)&cap[0];
    memset(pccb->pdata, 0, 8);
    if (usb_read_capacity(pccb, ss) != 0) {
       ELOG("READ_CAP ERROR\n");

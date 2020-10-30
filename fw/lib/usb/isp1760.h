@@ -171,11 +171,12 @@ typedef struct interrupt_transfer {
     struct usb_device *device;
     unsigned long pipe;
     void *buffer;
-    int length;
+    int32_t length;
     transfer_state_t state;
 } interrupt_transfer_t;
 
-int isp_init();
+int32_t isp_init();
+void isp_isr();
 
 // Internal Functions
 isp_result_t isp_transfer(ptd_type_t ptd_type, usb_speed_t speed,
@@ -183,7 +184,7 @@ isp_result_t isp_transfer(ptd_type_t ptd_type, usb_speed_t speed,
         uint32_t device_address, uint32_t parent_port, uint32_t parent_address,
         uint32_t max_packet_length, uint32_t *toggle,  usb_ep_type_t ep_type,
         uint32_t ep, uint8_t *buffer, uint32_t max_length, uint32_t *length,
-        int need_setup, int Timeout) ;
+        int32_t need_setup, int32_t Timeout) ;
 void isp_build_header(usb_speed_t speed, usb_token_t token, uint32_t device_address,
         uint32_t parent_port, uint32_t parent_address, uint32_t toggle,
         usb_ep_type_t ep_type, uint32_t ep, uint32_t *ptd,

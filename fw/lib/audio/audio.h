@@ -38,7 +38,7 @@
 #define WM8750_ROUT2_VOL_ADDR                   0x29
 #define WM8750_MONOOUT_VOL_ADDR                 0x2A
 
-void audio_init(ContextI2C *pCtx);
+void audio_init();
 
 #endif
 

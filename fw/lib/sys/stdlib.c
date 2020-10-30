@@ -15,8 +15,13 @@ extern long insn();
 
 extern void *memcpy(void *dest, const void *src, long n);
 extern char *strcpy(char *dest, const char *src);
+extern char *strncpy(char *dest, const char *src, int maxlen);
+extern char *strncat(char *dest, const char *src, int maxlen);
+extern char *strchr(char *haystack, const char needle);
+extern char *strrchr(char *haystack, const char needle);
+extern int strncmp(const char *s1, const char *s2, int maxlen);
 extern int strcmp(const char *s1, const char *s2);
-
+extern int strlen(const char *s);
 extern int isprint(int c);
 
 long insn()
@@ -88,6 +93,33 @@ char *strcpy(char* dst, const char* src)
    }
 }
 
+char *strncpy(char* dst, const char* src, int maxlen)
+{
+   char *r = dst;
+
+   for (;;)
+   {
+      char c = *(src++);
+      *(dst++) = c;
+      maxlen--;
+      if (maxlen <= 1) {
+        *dst = 0;
+        return r;
+      }
+      if (!c) return r;
+   }
+}
+
+int strlen(const char *s)
+{
+  int i = 0;
+  for(;;) {
+    char c = *(s++);
+    if(!c) return i;
+    i++;
+  }
+}
+
 int strcmp(const char *s1, const char *s2)
 {
    while ((((uint32_t)s1 | (uint32_t)s2) & 3) != 0)
@@ -138,13 +170,29 @@ int strcmp(const char *s1, const char *s2)
    }
 }
 
+int strncmp(const char *s1, const char *s2, int maxlen)
+{
+   while (maxlen)
+   {
+      char c1 = *(s1++);
+      char c2 = *(s2++);
+
+      if (c1 != c2)
+         return c1 < c2 ? -1 : +1;
+      else if (!c1)
+         return 0;
+      maxlen--;
+   }
+   return 0;
+}
+
 char *strstr(const char *searchee,const char *lookfor)
 {
    /* Less code size, but quadratic performance in the worst case.  */
    if(*searchee == 0) {
       if(*lookfor)
-         return(char *) 0;
-      return(char *) searchee;
+         return (char *)0;
+      return (char *)searchee;
    }
 
    while(*searchee) {
@@ -153,7 +201,7 @@ char *strstr(const char *searchee,const char *lookfor)
 
       while(1) {
          if(lookfor[i] == 0) {
-            return(char *) searchee;
+            return (char *)searchee;
          }
 
          if(lookfor[i] != searchee[i]) {
@@ -164,6 +212,34 @@ char *strstr(const char *searchee,const char *lookfor)
       searchee++;
    }
 
-   return(char *) 0;
+   return (char *)0;
 }
 
+char *strncat(char *dest, const char *src, int maxlen) {
+  int offset = strlen(dest);
+  maxlen -= offset;
+  if(maxlen > 0) {
+    return strncpy(&dest[offset], src, maxlen);
+  }
+  return dest;
+}
+
+char *strchr(char *haystack, const char needle) {
+  int o = 0;
+  while(haystack[o] > 0) {
+    if(haystack[o] == needle)
+      return &haystack[o];
+    o++;
+  }
+  return (char *)0;
+}
+
+char *strrchr(char *haystack, const char needle) {
+  int o = strlen(haystack);
+  while(o > 0) {
+    if(haystack[o] == needle)
+      return &haystack[o];
+    o--;
+  }
+  return (char *)0;
+}

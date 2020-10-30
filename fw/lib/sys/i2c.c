@@ -20,143 +20,152 @@
 #include "misc.h"
 #include "i2c.h"
 
+I2CContext_t S_AUDIO_I2C = {
+  ((volatile uint32_t *)0x03000014),
+  ((volatile uint32_t *)0x03000018)
+};
 
-#define i2c_scl  *((volatile uint32_t *)0x03000014)
-#define i2c_sda  *((volatile uint32_t *)0x03000018)
+I2CContext_t S_VGA_I2C = {
+  ((volatile uint32_t *)0x03000010),
+  ((volatile uint32_t *)0x03000014)
+};
+
+I2CContext_t *AUDIO_I2C = &S_AUDIO_I2C;
+I2CContext_t *VGA_I2C = &S_VGA_I2C;
 
 /* Reset to 1 by hardware
-void i2c_init(void) {
-	i2c_sda = 1;
-	i2c_scl = 1;
+void i2c_init(I2CContext_t *pCtx) {
+	*(pCtx->sda = 1;
+	*(pCtx->scl = 1;
 }*/
 
-void i2c_start(void) {
+void i2c_start(I2CContext_t *pCtx) {
     // Start: negedge of DATA when CLK is high
 
-    i2c_sda = 1;
+    *(pCtx->sda) = 1;
     delay_loop(1);
-    i2c_scl = 1;
+    *(pCtx->scl) = 1;
     delay_loop(5);
-    i2c_sda = 0;
+    *(pCtx->sda) = 0;
     delay_loop(5);
-    i2c_scl = 0;
+    *(pCtx->scl) = 0;
     delay_loop(2);
 }
 
-void i2c_stop(void) {
+void i2c_stop(I2CContext_t *pCtx) {
     // Stop: posedge of DATA when CLK is high
 
-    i2c_scl = 0;
-    i2c_sda = 0;
+    *(pCtx->scl) = 0;
+    *(pCtx->sda) = 0;
     delay_loop(4);
-    i2c_scl = 1;
+    *(pCtx->scl) = 1;
     delay_loop(5);
-    i2c_sda = 1;
+    *(pCtx->sda) = 1;
     delay_loop(4);
 }
 
-bool i2c_wait_ack(void) {
+bool i2c_wait_ack(I2CContext_t *pCtx) {
     uint16_t err_count = 0;
-    i2c_sda = 1; delay_loop(1);
-    i2c_scl = 1; delay_loop(1);
-    while(i2c_sda) {
+    *(pCtx->sda) = 1; delay_loop(1);
+    *(pCtx->scl) = 1; delay_loop(1);
+    while(*(pCtx->sda)) {
         err_count ++;
         if (err_count > 500) {
-            i2c_stop();
+            i2c_stop(pCtx);
             return false;
         }
     }
-    i2c_scl = 0;
+    *(pCtx->scl) = 0;
     return true;
 }
 
-void i2c_ack(void) {
-    i2c_scl = 0;
+void i2c_ack(I2CContext_t *pCtx) {
+    *(pCtx->scl) = 0;
 
-    i2c_sda = 0;
+    *(pCtx->sda) = 0;
     delay_loop(2);
-    i2c_scl = 1;
+    *(pCtx->scl) = 1;
     delay_loop(2);
-    i2c_scl = 0;
+    *(pCtx->scl) = 0;
 }
 
-void i2c_nack(void) {
-    i2c_scl = 0;
+void i2c_nack(I2CContext_t *pCtx) {
+    *(pCtx->scl) = 0;
 
-    i2c_sda = 1;
+    *(pCtx->sda) = 1;
     delay_loop(2);
-    i2c_scl = 1;
+    *(pCtx->scl) = 1;
     delay_loop(2);
-    i2c_scl = 0;
+    *(pCtx->scl) = 0;
 }
 
-bool i2c_send_byte(uint8_t b) {
+bool i2c_send_byte(I2CContext_t *pCtx, uint8_t b) {
 
-    i2c_scl = 0;
+    *(pCtx->scl) = 0;
     for (int i = 0; i < 8; i++) {
         if (b & 0x80)
-            i2c_sda = 1;
+            *(pCtx->sda) = 1;
         else
-            i2c_sda = 0;
+            *(pCtx->sda) = 0;
         b <<= 1;
         delay_loop(2);
-        i2c_scl = 1;
+        *(pCtx->scl) = 1;
         delay_loop(2);
-        i2c_scl = 0;
+        *(pCtx->scl) = 0;
         delay_loop(2);
     }
 
-    return i2c_wait_ack();
+    return i2c_wait_ack(pCtx);
 }
 
-uint8_t i2c_read_byte(void) {
+uint8_t i2c_read_byte(I2CContext_t *pCtx) {
     uint8_t rx = 0;
 
-    i2c_sda = 1;
+    *(pCtx->sda) = 1;
     for (int i = 0; i < 8; i++) {
-        i2c_scl = 0;
+        *(pCtx->scl) = 0;
         delay_loop(2);
-        i2c_scl = 1;
+        *(pCtx->scl) = 1;
         rx <<= 1;
-        rx |= i2c_sda;
+        rx |= *(pCtx->sda);
         delay_loop(1);
     }
 
     return rx;
 }
 
-void i2c_send_ack(bool ack) {
+void i2c_send_ack(I2CContext_t *pCtx, bool ack) {
     if (ack)
-        i2c_ack();
+        i2c_ack(pCtx);
     else
-        i2c_nack();
+        i2c_nack(pCtx);
 }
 
-bool i2c_read_reg(uint8_t i2c_addr, uint8_t addr, uint8_t *data) {
+bool i2c_read_reg(I2CContext_t *pCtx, uint8_t i2c_addr, uint8_t addr, uint8_t *data) {
     bool result;
 
-    i2c_start();
-    if ((result = i2c_send_byte(i2c_addr))) {
-        i2c_send_byte(addr);
-        i2c_start();
-        i2c_send_byte(i2c_addr | 0x1);
-        *data = i2c_read_byte();
-        i2c_send_ack(true);
+    i2c_start(pCtx);
+    if ((result = i2c_send_byte(pCtx, i2c_addr))) {
+        i2c_send_byte(pCtx, addr);
+        i2c_start(pCtx);
+        i2c_send_byte(pCtx, i2c_addr | 0x1);
+        *data = i2c_read_byte(pCtx);
+        i2c_send_ack(pCtx, true);
     }
-    i2c_stop();
+    i2c_stop(pCtx);
 
     return result;
 }
 
-bool i2c_write_reg(uint8_t i2c_addr, uint8_t addr, uint8_t data) {
+bool i2c_write_reg(I2CContext_t *pCtx, uint8_t i2c_addr, uint8_t addr, uint8_t data) {
     bool result;
 
-    i2c_start();
-    if ((result = i2c_send_byte(i2c_addr))) {
-        i2c_send_byte(addr);
-        i2c_send_byte(data);
+    i2c_start(pCtx);
+    if ((result = i2c_send_byte(pCtx, i2c_addr))) {
+        i2c_send_byte(pCtx, addr);
+        i2c_send_byte(pCtx, data);
     }
-    i2c_stop();
+    i2c_stop(pCtx);
 
     return result;
 }

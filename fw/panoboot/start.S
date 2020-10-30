@@ -10,14 +10,10 @@
 #define ENABLE_FASTIRQ
 
 #include "custom_ops.S"
-//#define regnum_q0   0
-//#define regnum_a0  10
 
 .section .text
 
 reset_vec:
-//picorv32_waitirq_insn(zero)
-//picorv32_maskirq_insn(zero, zero)
 j start
 
 .balign 16
@@ -299,10 +295,6 @@ irq_vec:
 
 	picorv32_retirq_insn()
 
-# .word 0x0000450B
-# addi a0, gp, 0
-# call irq_handler
-
 start:
 # zero-initialize register file
 addi x1, zero, 0
@@ -367,6 +359,12 @@ end_init_bss:
 
 # call main
 call main
+
+.globl irq_mask
+irq_mask:
+picorv32_maskirq_insn(zero, a0)
+ret
+
 
 .section .irqdata
 irq_regs:

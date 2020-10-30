@@ -37,21 +37,23 @@
 #include "usb.h"
 
 // #define LOG_TO_SERIAL
-#define DEBUG_LOGGING
-#define VERBOSE_DEBUG_LOGGING
+//#define DEBUG_LOGGING
+//#define VERBOSE_DEBUG_LOGGING
+#define DISABLE_LOGGING
 #include "log.h"
 
 // Define the following to send ANSI escape sequences for certain special keys
-#define ANSI_SUPPORT
+#undef ANSI_SUPPORT
+
 /*
  * if overwrite_console returns 1, the stdin, stderr and stdout
  * are switched to the serial port, else the settings in the
  * environment are used
  */
 #ifdef CONFIG_SYS_CONSOLE_OVERWRITE_ROUTINE
-extern int overwrite_console (void);
+extern int32_t overwrite_console (void);
 #else
-int overwrite_console (void)
+int32_t overwrite_console (void)
 {
   return(0);
 }
@@ -61,45 +63,7 @@ int overwrite_console (void)
 #define REPEAT_RATE  40/4 /* 40msec -> 25cps */
 #define REPEAT_DELAY 10 /* 10 x REAPEAT_RATE = 400msec */
 
-#define ESC             0x1b
-#define F1              0x3a
-#define F2              0x3b
-#define F3              0x3c
-#define F4              0x3d
-#define F5              0x3e
-#define F6              0x3f
-#define F7              0x40
-#define F8              0x41
-#define F9              0x42
-#define F10             0x43
-#define F11             0x44
-#define F12             0x45
-#define DEL             0x4c
-
-#define ARROW_R         0x4f
-#define ARROW_L         0x50
-#define ARROW_D         0x51
-#define ARROW_U         0x52
-
-#define NUMPAD_MINUS    0x56
-#define NUMPAD_ENTER    0x58
-#define NUMPAD_1        0x59
-#define NUMPAD_2        0x5a
-#define NUMPAD_3        0x5b
-#define NUMPAD_4        0x5c
-#define NUMPAD_5        0x5d
-#define NUMPAD_6        0x5e
-#define NUMPAD_7        0x5f
-#define NUMPAD_8        0x60
-#define NUMPAD_9        0x61
-#define NUMPAD_0        0x62
-#define NUMPAD_PERIOD   0x63
-
-
-#define NUM_LOCK  0x53
-#define CAPS_LOCK 0x39
-#define SCROLL_LOCK 0x47
-
+#include "usb_keys.h"
 
 /* Modifier bits */
 #define LEFT_CNTR    0
@@ -111,34 +75,35 @@ int overwrite_console (void)
 #define RIGHT_ALT    6
 #define RIGHT_GUI    7
 
+#define ANSI_ESC 0x1b
+
 #define USB_KBD_BUFFER_LEN 0x20  /* size of the keyboardbuffer */
 
-static volatile char usb_kbd_buffer[USB_KBD_BUFFER_LEN];
-static volatile int usb_in_pointer = 0;
-static volatile int usb_out_pointer = 0;
+static volatile uint16_t usb_kbd_buffer[USB_KBD_BUFFER_LEN];
+static volatile int32_t usb_in_pointer = 0;
+static volatile int32_t usb_out_pointer = 0;
 
-unsigned char new_ms_pkt[8];
-unsigned char old_ms_pkt[8];
+uint8_t new_ms_pkt[8];
+uint8_t old_ms_pkt[8];
 
-unsigned char new_kb_pkt[8];
-unsigned char old_kb_pkt[8];
-int repeat_delay;
+uint8_t new_kb_pkt[8];
+uint8_t old_kb_pkt[8];
+int32_t repeat_delay;
 #define DEVNAME "usbhid"
-static unsigned char num_lock = 0;
-static unsigned char caps_lock = 0;
-static unsigned char scroll_lock = 0;
-static unsigned char ctrl = 0;
+static uint8_t num_lock = 0;
+static uint8_t caps_lock = 0;
+static uint8_t scroll_lock = 0;
+static uint8_t ctrl = 0;
 
-// Set the following to swap the caps lock and control keys (yes I'm that old)
-unsigned char gCapsLockSwap = 0;
+static bool kbd_raw = 0;
 
-static unsigned char leds __attribute__ ((aligned (0x4)));
+static uint8_t leds __attribute__ ((aligned (0x4)));
 
-static unsigned char usb_kbd_numkey[] = {
+static uint8_t usb_kbd_numkey[] = {
   '1', '2', '3', '4', '5', '6', '7', '8', '9', '0','\r',0x1b,'\b','\t',' ', '-',
   '=', '[', ']','\\', '#', ';', '\'', '`', ',', '.', '/'
 };
-static unsigned char usb_kbd_numkey_shifted[] = {
+static uint8_t usb_kbd_numkey_shifted[] = {
   '!', '@', '#', '$', '%', '^', '&', '*', '(', ')','\r',0x1b,'\b','\t',' ', '_',
   '+', '{', '}', '|', '~', ':', '"', '~', '<', '>', '?'
 };
@@ -146,13 +111,11 @@ static unsigned char usb_kbd_numkey_shifted[] = {
 unsigned long kb_pipe = 0xffffffff;
 unsigned long ms_pipe = 0xffffffff;
 
-void FunctionKeyCB(unsigned char Function);
-
 /******************************************************************
  * Queue handling
  ******************************************************************/
 /* puts character in the queue and sets up the in and out pointer */
-static void usb_kbd_put_queue(char data)
+static void usb_kbd_put_queue(uint16_t data)
 {
 #ifdef VERBOSE_DEBUG_LOGGING
   if(isprint(data)) {
@@ -180,7 +143,7 @@ static void usb_kbd_put_queue(char data)
 }
 
 /* test if a character is in the queue */
-int usb_kbd_testc(void)
+int32_t usb_kbd_testc(void)
 {
 #ifdef CONFIG_SYS_USB_EVENT_POLL
   usb_event_poll();
@@ -191,9 +154,9 @@ int usb_kbd_testc(void)
     return(1);
 }
 /* gets the character from the queue */
-char usb_kbd_getc(void)
+uint16_t usb_kbd_getc(void)
 {
-  char c;
+  uint16_t c;
   while(usb_in_pointer==usb_out_pointer) {
 #ifdef CONFIG_SYS_USB_EVENT_POLL
     usb_event_poll();
@@ -208,12 +171,12 @@ char usb_kbd_getc(void)
 }
 
 /* forward decleration */
-static int usb_hid_probe(struct usb_device *dev, unsigned int ifnum);
+static int32_t usb_hid_probe(struct usb_device *dev, uint32_t ifnum);
 
 /* search for hid class devices and register if found */
-int drv_usb_hid_init(void)
+int32_t drv_usb_hid_init(void)
 {
-  int error,i;
+  int32_t error,i;
   struct usb_device *dev;
 
   usb_in_pointer=0;
@@ -240,7 +203,7 @@ int drv_usb_hid_init(void)
 
 
 /* deregistering the keyboard */
-int usb_hid_deregister(void)
+int32_t usb_hid_deregister(void)
 {
 #ifdef CONFIG_SYS_STDIO_DEREGISTER
   return stdio_deregister(DEVNAME);
@@ -284,13 +247,13 @@ static void usb_kbd_setled(struct usb_device *dev)
     1 - key pressed
     2 - key repeat
 */
-static int usb_kbd_translate(unsigned char scancode,unsigned char modifier,int pressed)
+static int32_t usb_kbd_translate(uint8_t scancode,uint8_t modifier,int pressed)
 {
-  unsigned char keycode;
+  uint8_t keycode;
 #ifdef ANSI_SUPPORT
   char EscKey = 0;
 #endif
-  static unsigned char RepeatScanCode;
+  static uint8_t RepeatScanCode;
 
 #ifdef VERBOSE_DEBUG_LOGGING
   VLOG("0x%x,0x%x,%d\n",scancode,modifier,pressed);
@@ -303,21 +266,21 @@ static int usb_kbd_translate(unsigned char scancode,unsigned char modifier,int p
       RepeatScanCode = 0;
     }
 #ifdef ANSI_SUPPORT
-    if(scancode == ARROW_U) {
+    if(scancode == KEYCODE_ARROW_U) {
       EscKey = 'A';
     }
-    else if(scancode == ARROW_D) {
+    else if(scancode == KEYCODE_ARROW_D) {
       EscKey = 'B';
     }
-    else if(scancode == ARROW_R) {
+    else if(scancode == KEYCODE_ARROW_R) {
       EscKey = 'C';
     }
-    else if(scancode == ARROW_L) {
+    else if(scancode == KEYCODE_ARROW_L) {
       EscKey = 'D';
     }
 
     if(EscKey != 0) {
-      usb_kbd_put_queue(ESC);
+      usb_kbd_put_queue(ANSI_ESC);
       usb_kbd_put_queue(EscKey);
     }
 #endif
@@ -349,61 +312,57 @@ static int usb_kbd_translate(unsigned char scancode,unsigned char modifier,int p
     else /* non shifted */
       keycode=usb_kbd_numkey[scancode-0x1e];
   }
-  else if(scancode >= F1 && scancode <= F12) {
-  // F1 -> F12
-    FunctionKeyCB(scancode - F1 + 1);
-  }
-  else if(scancode == DEL) {
+  else if(scancode == KEYCODE_DEL) {
     keycode = 0x7f;
   }
 #ifdef ANSI_SUPPORT
-  else if(scancode >= F1 && scancode <= F4) {
+  else if(scancode >= KEYCODE_F1 && scancode <= KEYCODE_F4) {
   // F1..F4 translate to PF1..PF4 <esc>OP...
     EscKey = 'P' + scancode - F1;
   }
-  else if(scancode == NUMPAD_0) {
+  else if(scancode == KEYCODE_NUMPAD_0) {
     EscKey = 'p';
   }
-  else if(scancode >= NUMPAD_1 && scancode <= NUMPAD_9) {
+  else if(scancode >= KEYCODE_NUMPAD_1 && scancode <= KEYCODE_NUMPAD_9) {
   // Numeric keypad keys
-    EscKey = 'q' + scancode - NUMPAD_1;
+    EscKey = 'q' + scancode - KEYCODE_NUMPAD_1;
   }
-  else if(scancode == NUMPAD_MINUS) {
+  else if(scancode == KEYCODE_NUMPAD_MINUS) {
     EscKey = 'm';
   }
-  else if(scancode == NUMPAD_PERIOD) {
+  else if(scancode == KEYCODE_NUMPAD_PERIOD) {
     EscKey = 'n';
   }
-  else if(scancode == NUMPAD_ENTER) {
+  else if(scancode == KEYCODE_NUMPAD_ENTER) {
     EscKey = 'M';
   }
-  else if(scancode == ARROW_U) {
+  else if(scancode == KEYCODE_ARROW_U) {
     EscKey = 'A';
   }
-  else if(scancode == ARROW_D) {
+  else if(scancode == KEYCODE_ARROW_D) {
     EscKey = 'B';
   }
-  else if(scancode == ARROW_R) {
+  else if(scancode == KEYCODE_ARROW_R) {
     EscKey = 'C';
   }
-  else if(scancode == ARROW_L) {
+  else if(scancode == KEYCODE_ARROW_L) {
     EscKey = 'D';
   }
 #else
-  if(scancode == NUMPAD_0) {
+  if(scancode == KEYCODE_NUMPAD_0) {
     keycode = '0';
   }
-  else if(scancode >= NUMPAD_1 && scancode <= NUMPAD_9) {
+  else if(scancode >= KEYCODE_NUMPAD_1 && scancode <= KEYCODE_NUMPAD_9) {
   // Numeric keypad keys
-    keycode = '1' + scancode - NUMPAD_1;
+    keycode = '1' + scancode - KEYCODE_NUMPAD_1;
   }
-  else if(scancode == NUMPAD_MINUS) {
+  else if(scancode == KEYCODE_NUMPAD_MINUS) {
     keycode = '-';
   }
-  else if(scancode == NUMPAD_PERIOD) {
+  else if(scancode == KEYCODE_NUMPAD_PERIOD) {
     keycode = '.';
   }
-  else if(scancode == NUMPAD_ENTER) {
+  else if(scancode == KEYCODE_NUMPAD_ENTER) {
     keycode = '\r';
   }
 #endif
@@ -413,15 +372,15 @@ static int usb_kbd_translate(unsigned char scancode,unsigned char modifier,int p
   }
 
   if(pressed==1) {
-    if(scancode==NUM_LOCK) {
+    if(scancode==KEYCODE_NUM_LOCK) {
       num_lock=~num_lock;
       return 1;
     }
-    if(scancode==CAPS_LOCK) {
+    if(scancode==KEYCODE_CAPS_LOCK) {
       caps_lock=~caps_lock;
       return 1;
     }
-    if(scancode==SCROLL_LOCK) {
+    if(scancode==KEYCODE_SCROLL_LOCK) {
       scroll_lock=~scroll_lock;
       return 1;
     }
@@ -437,7 +396,7 @@ static int usb_kbd_translate(unsigned char scancode,unsigned char modifier,int p
 #ifdef ANSI_SUPPORT
   else {
     if(EscKey != 0) {
-      usb_kbd_put_queue(ESC);
+      usb_kbd_put_queue(ANSI_ESC);
       usb_kbd_put_queue('O');
       usb_kbd_put_queue(EscKey);
     }
@@ -447,10 +406,10 @@ static int usb_kbd_translate(unsigned char scancode,unsigned char modifier,int p
 }
 
 /* Interrupt service routines */
-static int usb_kb_irq(struct usb_device *dev, unsigned long pipe)
+static int32_t usb_kb_irq(struct usb_device *dev, unsigned long pipe)
 {
-  int i,res;
-  unsigned char Modifiers = new_kb_pkt[0];
+  int32_t i,res;
+  uint8_t Modifiers = new_kb_pkt[0];
   bool KeyChange = false;
 
   res=0;
@@ -474,76 +433,45 @@ static int usb_kb_irq(struct usb_device *dev, unsigned long pipe)
   }
 #endif
 
-  if(gCapsLockSwap) {
-  // Swap caps lock and left control key, disable right control key
-    Modifiers &= ~1;
-    Modifiers |= ctrl;
+  switch(new_kb_pkt[0]) {
+    case 0x0:   /* No combo key pressed */
+      ctrl = 0;
+      break;
+    case 0x01:  /* Left Ctrl pressed */
+    case 0x10:  /* Right Ctrl pressed */
+      ctrl = 1;
+      break;
+  }
 
-    if((old_kb_pkt[0] & 1) != (new_kb_pkt[0] & 1)) {
-      // Left control changed state
-      VLOG("Ctrl translated to caps lock %s\n",
-           (new_kb_pkt[0] & 1) ? "pressed" : "released");
-      res |= usb_kbd_translate(CAPS_LOCK,0,new_kb_pkt[0] & 1);
-    }
-
-
+  if(kbd_raw) {
     for(i = 2; i < 8; i++) {
-      if(old_kb_pkt[i] == CAPS_LOCK && memscan(&new_kb_pkt[2], old_kb_pkt[i], 6) == &new_kb_pkt[8]) {
-         VLOG("caps lock translated to ctrl released\n");
-         ctrl = 0;
+      if(old_kb_pkt[i] > 3 && memscan(&new_kb_pkt[2], old_kb_pkt[i], 6) == &new_kb_pkt[8]) {
+        // Key Released
+        usb_kbd_put_queue(0x8000 | old_kb_pkt[i]);
       }
-      if(new_kb_pkt[i] == CAPS_LOCK && memscan(&old_kb_pkt[2], new_kb_pkt[i], 6) == &old_kb_pkt[8]) {
-         VLOG("caps lock translated to ctrl pressed\n");
-         ctrl = 1;
+      if(new_kb_pkt[i] > 3 && memscan(&old_kb_pkt[2], new_kb_pkt[i], 6) == &old_kb_pkt[8]) {
+        // Key Pressed
+        usb_kbd_put_queue(new_kb_pkt[i]);
       }
     }
-  }
-  else {
-    switch(new_kb_pkt[0]) {
-      case 0x0:   /* No combo key pressed */
-         ctrl = 0;
-         break;
-      case 0x01:  /* Left Ctrl pressed */
-      case 0x10:  /* Right Ctrl pressed */
-         ctrl = 1;
-         break;
+  } else {
+    for(i = 2; i < 8; i++) {
+      if(old_kb_pkt[i] > 3 && memscan(&new_kb_pkt[2], old_kb_pkt[i], 6) == &new_kb_pkt[8]) {
+        KeyChange = true;
+        res|=usb_kbd_translate(old_kb_pkt[i],Modifiers,0);
+      }
+      if(new_kb_pkt[i] > 3 && memscan(&old_kb_pkt[2], new_kb_pkt[i], 6) == &old_kb_pkt[8]) {
+        KeyChange = true;
+        res|=usb_kbd_translate(new_kb_pkt[i],Modifiers,1);
+      }
     }
-  }
 
-  for(i = 2; i < 8; i++) {
-    if(old_kb_pkt[i] > 3 &&
-      (!gCapsLockSwap || old_kb_pkt[i] != CAPS_LOCK) &&
-      memscan(&new_kb_pkt[2], old_kb_pkt[i], 6) == &new_kb_pkt[8])
-    {
-#ifdef VERBOSE_DEBUG_LOGGING
-      VLOG_R("#%d:\n",__LINE__);
-#endif
-      KeyChange = true;
-      res|=usb_kbd_translate(old_kb_pkt[i],Modifiers,0);
-    }
-    if(new_kb_pkt[i] > 3 &&
-      (!gCapsLockSwap || new_kb_pkt[i] != CAPS_LOCK) &&
-      memscan(&old_kb_pkt[2], new_kb_pkt[i], 6) == &old_kb_pkt[8])
-    {
-#ifdef VERBOSE_DEBUG_LOGGING
-      VLOG_R("#%d:\n",__LINE__);
-#endif
-      KeyChange = true;
-      res|=usb_kbd_translate(new_kb_pkt[i],Modifiers,1);
-    }
-  }
-
-  if(!KeyChange) {
-    for(i = 7; i >= 2; i--) {
-      if(new_kb_pkt[i] > 3 &&
-        (!gCapsLockSwap || new_kb_pkt[i] != CAPS_LOCK) &&
-        new_kb_pkt[i] != CAPS_LOCK &&
-        old_kb_pkt[i]==new_kb_pkt[i])
-      { // still pressed
-#ifdef VERBOSE_DEBUG_LOGGING
-        VLOG_R("#%d:\n",__LINE__);
-#endif
-        res |= usb_kbd_translate(new_kb_pkt[i],Modifiers,2);
+    if(!KeyChange) {
+      for(i = 7; i >= 2; i--) {
+        if(new_kb_pkt[i] > 3 && new_kb_pkt[i] != KEYCODE_CAPS_LOCK && old_kb_pkt[i]==new_kb_pkt[i]) {
+          // still pressed
+          res |= usb_kbd_translate(new_kb_pkt[i],Modifiers,2);
+        }
       }
     }
   }
@@ -555,9 +483,9 @@ static int usb_kb_irq(struct usb_device *dev, unsigned long pipe)
   return 1; /* install IRQ Handler again */
 }
 
-static int usb_ms_irq(struct usb_device *dev, unsigned long pipe)
+static int32_t usb_ms_irq(struct usb_device *dev, unsigned long pipe)
 {
-  int i;
+  int32_t i;
 
 //  LOG("pipe %04X dlen %d\n", pipe, dev->act_len);
 
@@ -591,7 +519,7 @@ static int usb_ms_irq(struct usb_device *dev, unsigned long pipe)
   return 1;
 }
 
-static int usb_hid_irq(struct usb_device *dev, unsigned long pipe)
+static int32_t usb_hid_irq(struct usb_device *dev, unsigned long pipe)
 {
   if(dev->irq_status!=0) {
     LOG("usb_hid Error %lX, len %d\n",dev->irq_status,dev->act_len);
@@ -600,18 +528,18 @@ static int usb_hid_irq(struct usb_device *dev, unsigned long pipe)
 //  if(dev->act_len != 8)
 //    return usb_ms_irq(dev,pipe);
 //  if(pipe == ms_pipe)
-    return usb_ms_irq(dev,pipe);
-//  if(pipe == kb_pipe)
-//    return usb_kb_irq(dev,pipe);
-//  return 1;
+//    return usb_ms_irq(dev,pipe);
+  if(pipe == kb_pipe)
+    return usb_kb_irq(dev,pipe);
+  return 1;
 }
 
 /* probes the USB device dev for keyboard type */
-static int usb_kb_probe(struct usb_device *dev, unsigned int ifnum)
+static int32_t usb_kb_probe(struct usb_device *dev, uint32_t ifnum)
 {
   struct usb_interface_descriptor *iface;
   struct usb_endpoint_descriptor *ep;
-  int pipe,maxp;
+  int32_t pipe,maxp;
 
   iface = &dev->config.if_desc[ifnum];
   if(iface->bNumEndpoints != 1) return 0;
@@ -639,11 +567,11 @@ static int usb_kb_probe(struct usb_device *dev, unsigned int ifnum)
 }
 
 /* probes the USB device dev for keyboard type */
-static int usb_ms_probe(struct usb_device *dev, unsigned int ifnum)
+static int32_t usb_ms_probe(struct usb_device *dev, uint32_t ifnum)
 {
   struct usb_interface_descriptor *iface;
   struct usb_endpoint_descriptor *ep;
-  int pipe,maxp;
+  int32_t pipe,maxp;
 
   iface = &dev->config.if_desc[ifnum];
   if(iface->bNumEndpoints != 1) return 0;
@@ -670,16 +598,23 @@ static int usb_ms_probe(struct usb_device *dev, unsigned int ifnum)
   return 1;
 }
 
-static int usb_hid_probe(struct usb_device *dev, unsigned int ifnum)
+static int32_t usb_hid_probe(struct usb_device *dev, uint32_t ifnum)
 {
   struct usb_interface_descriptor *iface;
   iface = &dev->config.if_desc[ifnum];
 
   if(iface->bInterfaceClass != 3) return 0;
   if(iface->bInterfaceSubClass != 1) return 0;
-//  if(iface->bInterfaceProtocol == 1) return usb_kb_probe(dev, ifnum);
-  if(iface->bInterfaceProtocol == 2) return usb_ms_probe(dev, ifnum);
+  if(iface->bInterfaceProtocol == 1) return usb_kb_probe(dev, ifnum);
+//  if(iface->bInterfaceProtocol == 2) return usb_ms_probe(dev, ifnum);
 
   return 0;
 }
 
+void usb_kbd_setraw(void) {
+  kbd_raw = 1;
+}
+
+void usb_kbd_setcooked(void) {
+  kbd_raw = 0;
+}

@@ -2,8 +2,9 @@ PATH := /opt/riscv32i/bin:$(PATH)
 
 TOPDIR := ../../..
 
-OBJS = i2c.o misc.o printf.o putchar.o stdlib.o
-TARGETLIB = libsys.a
+INCLUDES = -I../sys -I../fatfs
+OBJS = elf.o
+TARGETLIB = libelf.a
 
 CFLAGS = -MD -O1 -march=rv32ic -ffreestanding -nostdlib -Wl,--no-relax
 TOOLCHAIN_PREFIX = riscv32-unknown-elf-
@@ -15,7 +16,7 @@ $(TARGETLIB): $(OBJS)
 	size $@
 
 %.o: %.c
-	$(TOOLCHAIN_PREFIX)gcc -c $(CFLAGS) $<
+	$(TOOLCHAIN_PREFIX)gcc -c $(CFLAGS) $(INCLUDES) $<
 
 %.o: %.s
 	$(TOOLCHAIN_PREFIX)gcc -c $(CFLAGS) $<

@@ -41,6 +41,9 @@
 #define LOG_VERBOSE_DISABLED  0x08
 void LogPutc(char c,void * arg);
 
+typedef void (*PutCharCallback_t)(char c);
+extern PutCharCallback_t PutCharCallback;
+
 #if !defined(LOGGING_DISABLED) || defined(VERBOSE_DEBUG_LOGGING) || defined(DEBUG_LOGGING)
    void LogHex(char *LogFlags,void *Data,int Len);
    #if defined(LOG_TO_SERIAL)

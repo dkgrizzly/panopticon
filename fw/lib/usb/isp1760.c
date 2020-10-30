@@ -31,7 +31,7 @@
 
 #undef USE_ROOT_HUB
 
-// #define ISP_IRQ_DRIVEN
+#undef ISP_IRQ_DRIVEN
 
 interrupt_transfer_t registered_transfers[MAX_REG_INT_TRANSFER_NUM];
 
@@ -39,210 +39,204 @@ interrupt_transfer_t registered_transfers[MAX_REG_INT_TRANSFER_NUM];
 #define ISP_INT_MASK  0x00000080
 
 uint32_t isp_read_word(uint32_t address) {
-    return *((volatile uint32_t *)(ISP_BASE_ADDR | (address << 1)));
+  return *((volatile uint32_t *)(ISP_BASE_ADDR | (address << 1)));
 }
 
 uint32_t isp_read_dword(uint32_t address) {
-    uint32_t l = *((volatile uint32_t *)(ISP_BASE_ADDR | (address << 1)));
-    uint32_t h = *((volatile uint32_t *)(ISP_BASE_ADDR | (address << 1) | 0x4));
-    return ((h << 16) | (l & 0xFFFF));
+  uint32_t l = *((volatile uint32_t *)(ISP_BASE_ADDR | (address << 1)));
+  uint32_t h = *((volatile uint32_t *)(ISP_BASE_ADDR | (address << 1) | 0x4));
+  return ((h << 16) | (l & 0xFFFF));
 }
 
 void isp_write_word(uint32_t address, uint32_t data) {
-    *((volatile uint32_t *)(ISP_BASE_ADDR | (address << 1))) = data;
+  *((volatile uint32_t *)(ISP_BASE_ADDR | (address << 1))) = data;
 }
 
 void isp_write_dword(uint32_t address, uint32_t data) {
-    *((volatile uint32_t *)(ISP_BASE_ADDR | (address << 1))) = data & 0xFFFF;
-    *((volatile uint32_t *)(ISP_BASE_ADDR | (address << 1) | 0x4)) = data >> 16;
+  *((volatile uint32_t *)(ISP_BASE_ADDR | (address << 1))) = data & 0xFFFF;
+  *((volatile uint32_t *)(ISP_BASE_ADDR | (address << 1) | 0x4)) = data >> 16;
 }
 
 // Datasheet, page 17
 uint32_t isp_addr_mem_to_cpu(uint32_t mem_address) {
-    return (mem_address << 3) + MEM_BASE;
+  return (mem_address << 3) + MEM_BASE;
 }
 
 uint32_t isp_addr_cpu_to_mem(uint32_t cpu_address) {
-    return (cpu_address - MEM_BASE) >> 3;
+  return (cpu_address - MEM_BASE) >> 3;
 }
 
 void isp_write_memory(uint32_t address, uint32_t *data, uint32_t length) {
-    address = isp_addr_mem_to_cpu(address);
-    for (uint32_t i = 0; i < length; i+= 4) {
-        isp_write_dword(address, *data++);
-        address += 4;
-    }
+  address = isp_addr_mem_to_cpu(address);
+  for (uint32_t i = 0; i < length; i+= 4) {
+    isp_write_dword(address, *data++);
+    address += 4;
+  }
 }
 
 void isp_read_memory(uint32_t address, uint32_t *data, uint32_t length) {
-    // TODO: What about bank address?
-    // Doesn't seem to matter if read is not interleaved
-    address = isp_addr_mem_to_cpu(address);
-    isp_write_dword(ISP_MEMORY, address);
-    for (uint32_t i = 0; i < length; i+= 4) {
-        *data++ = isp_read_dword(address);
-        address += 4;
-    }
+  // TODO: What about bank address?
+  // Doesn't seem to matter if read is not interleaved
+  address = isp_addr_mem_to_cpu(address);
+  isp_write_dword(ISP_MEMORY, address);
+  for (uint32_t i = 0; i < length; i+= 4) {
+    *data++ = isp_read_dword(address);
+    address += 4;
+  }
 }
 
-isp_result_t isp_wait(uint32_t address, uint32_t mask, uint32_t value,
-        uint32_t timeout) {
-    uint32_t start_ticks = ticks_ms();
-    do {
-        if (isp_read_dword(address) & mask == value)
-            return ISP_SUCCESS;
-        delay_us(10);
-    } while ((ticks_ms() - start_ticks) < timeout);
-    return ISP_GENERAL_FAILURE;
+isp_result_t isp_wait(uint32_t address, uint32_t mask, uint32_t value, uint32_t timeout) {
+  uint32_t start_ticks = ticks_ms();
+  do {
+    if (isp_read_dword(address) & mask == value)
+      return ISP_SUCCESS;
+    delay_us(10);
+  } while ((ticks_ms() - start_ticks) < timeout);
+  return ISP_GENERAL_FAILURE;
 }
 
 void isp_reset() {
-    isp_reset_pin = 1;
-    delay_ms(50);
-    isp_reset_pin = 0;
-    delay_ms(50);
-    isp_reset_pin = 1;
-    delay_ms(50);
+  isp_reset_pin = 1;
+  delay_ms(50);
+  isp_reset_pin = 0;
+  delay_ms(50);
+  isp_reset_pin = 1;
+  delay_ms(50);
 }
 
-int isp_init() {
-    uint32_t value;
+int32_t isp_init() {
+  uint32_t value;
 
-    //LOG_DISABLE();
-    // Reset the ISP1760 controller
-    isp_reset();
+  //LOG_DISABLE();
+  // Reset the ISP1760 controller
+  isp_reset();
 
-    // Set to 16 bit mode
-    isp_write_dword(ISP_HW_MODE_CONTROL, 0x00000000);
-    isp_write_dword(ISP_HW_MODE_CONTROL, 0x00000000);
+  // Set to 16 bit mode
+  isp_write_dword(ISP_HW_MODE_CONTROL, 0x00000000);
+  isp_write_dword(ISP_HW_MODE_CONTROL, 0x00000000);
 
-    // Test SCRATCH register
-    isp_write_dword(ISP_SCRATCH, 0x410C0C0A);
-    // change bus pattern
-    value = isp_read_dword(ISP_CHIP_ID);
-    value = isp_read_dword(ISP_SCRATCH);
-    if (value != 0x410C0C0A) {
-        printf("ISP1760: Scratch RW test failed!\n");
-        return -1;
-    }
+  // Test SCRATCH register
+  isp_write_dword(ISP_SCRATCH, 0x410C0C0A);
+  // change bus pattern
+  value = isp_read_dword(ISP_CHIP_ID);
+  value = isp_read_dword(ISP_SCRATCH);
+  if (value != 0x410C0C0A) {
+    printf("ISP1760: Scratch RW test failed!\n");
+    return -1;
+  }
 
-    // Disable all buffers
-    isp_write_dword(ISP_BUFFER_STATUS, 0x00000000);
+  // Disable all buffers
+  isp_write_dword(ISP_BUFFER_STATUS, 0x00000000);
 
-    // Skip all transfers
-    isp_write_dword(ISP_ATL_PTD_SKIPMAP, 0xffffffff);
-    isp_write_dword(ISP_INT_PTD_SKIPMAP, 0xffffffff);
-    isp_write_dword(ISP_ISO_PTD_SKIPMAP, 0xffffffff);
+  // Skip all transfers
+  isp_write_dword(ISP_ATL_PTD_SKIPMAP, 0xffffffff);
+  isp_write_dword(ISP_INT_PTD_SKIPMAP, 0xffffffff);
+  isp_write_dword(ISP_ISO_PTD_SKIPMAP, 0xffffffff);
 
-    // Clear done maps
-    isp_write_dword(ISP_ATL_PTD_DONEMAP, 0x00000000);
-    isp_write_dword(ISP_INT_PTD_DONEMAP, 0x00000000);
-    isp_write_dword(ISP_ISO_PTD_DONEMAP, 0x00000000);
+  // Clear done maps
+  isp_write_dword(ISP_ATL_PTD_DONEMAP, 0x00000000);
+  isp_write_dword(ISP_INT_PTD_DONEMAP, 0x00000000);
+  isp_write_dword(ISP_ISO_PTD_DONEMAP, 0x00000000);
 
-    // Reset all
-    isp_write_dword(ISP_SW_RESET, ISP_SW_RESET_ALL);
-    delay_ms(250);
+  // Reset all
+  isp_write_dword(ISP_SW_RESET, ISP_SW_RESET_ALL);
+  delay_ms(250);
 
-    // Reset HC
-    isp_write_dword(ISP_SW_RESET, ISP_SW_RESET_HC);
-    delay_ms(250);
+  // Reset HC
+  isp_write_dword(ISP_SW_RESET, ISP_SW_RESET_HC);
+  delay_ms(250);
 
-    // Execute reset command
-    isp_write_dword(ISP_HW_MODE_CONTROL, 0x00000000);
-    isp_write_dword(ISP_HW_MODE_CONTROL, 0x00000000);
-    value = isp_read_dword(ISP_USBCMD);
-    value |= ISP_USBCMD_RESET;
-    isp_write_dword(ISP_USBCMD, value);
+  // Execute reset command
+  isp_write_dword(ISP_HW_MODE_CONTROL, 0x00000000);
+  isp_write_dword(ISP_HW_MODE_CONTROL, 0x00000000);
+  value = isp_read_dword(ISP_USBCMD);
+  value |= ISP_USBCMD_RESET;
+  isp_write_dword(ISP_USBCMD, value);
 
-    delay_ms(100);
-    /*if (isp_wait(ISP_USBCMD, ISP_USBCMD_RESET, 0, 250) != ISP_SUCCESS) {
-        LOG("Failed to reset the ISP1760!\n");
-        return;
-    }*/
+  delay_ms(100);
+  /*if (isp_wait(ISP_USBCMD, ISP_USBCMD_RESET, 0, 250) != ISP_SUCCESS) {
+    LOG("Failed to reset the ISP1760!\n");
+    return;
+  }*/
 
-    isp_write_dword(ISP_HW_MODE_CONTROL, 0x00000000);
-    isp_write_dword(ISP_HW_MODE_CONTROL, 0x00000000);
+  isp_write_dword(ISP_HW_MODE_CONTROL, 0x00000000);
+  isp_write_dword(ISP_HW_MODE_CONTROL, 0x00000000);
 
-    // Clear USB reset command
-    value &= ~ISP_USBCMD_RESET;
-    isp_write_dword(ISP_USBCMD, value);
+  // Clear USB reset command
+  value &= ~ISP_USBCMD_RESET;
+  isp_write_dword(ISP_USBCMD, value);
 
-    // Config port 1
-    // Config as USB HOST (On ISP1761 it can also be device)
-    isp_write_dword(ISP_PORT_1_CONTROL, 0x00800018);
+  // Config port 1
+  // Config as USB HOST (On ISP1761 it can also be device)
+  isp_write_dword(ISP_PORT_1_CONTROL, 0x00800018);
 
-    // Configure interrupt here
-    isp_write_dword(ISP_INTERRUPT, ISP_INT_MASK);
+  // Configure interrupt here
+  isp_write_dword(ISP_INTERRUPT, ISP_INT_MASK);
 
-    isp_write_dword(ISP_INTERRUPT_ENABLE, ISP_INT_MASK);
+  isp_write_dword(ISP_INTERRUPT_ENABLE, ISP_INT_MASK);
 
-    isp_write_dword(ISP_HW_MODE_CONTROL, 0x80000000);
-    delay_ms(50);
-    isp_write_dword(ISP_HW_MODE_CONTROL, 0x00000000);
+  isp_write_dword(ISP_HW_MODE_CONTROL, 0x80000000);
+  delay_ms(50);
+  isp_write_dword(ISP_HW_MODE_CONTROL, 0x00000000);
 
-    isp_write_dword(ISP_ATL_IRQ_MASK_AND, 0x00000000);
-    isp_write_dword(ISP_ATL_IRQ_MASK_OR,  0x00000000);
-    isp_write_dword(ISP_INT_IRQ_MASK_AND, 0x00000000);
-    isp_write_dword(ISP_INT_IRQ_MASK_OR,  0x00000001);
-    isp_write_dword(ISP_ISO_IRQ_MASK_AND, 0x00000000);
-    isp_write_dword(ISP_ISO_IRQ_MASK_OR,  0xffffffff);
+  isp_write_dword(ISP_ATL_IRQ_MASK_AND, 0x00000000);
+  isp_write_dword(ISP_ATL_IRQ_MASK_OR,  0x00000000);
+  isp_write_dword(ISP_INT_IRQ_MASK_AND, 0x00000000);
+  isp_write_dword(ISP_INT_IRQ_MASK_OR,  0x00000001);
+  isp_write_dword(ISP_ISO_IRQ_MASK_AND, 0x00000000);
+  isp_write_dword(ISP_ISO_IRQ_MASK_OR,  0xffffffff);
 
-    // Global interrupt enable
-    isp_write_dword(ISP_HW_MODE_CONTROL, 0x00000001);
+  // Global interrupt enable
+  isp_write_dword(ISP_HW_MODE_CONTROL, 0x00000001);
 
-    // Execute run command
-    isp_write_dword(ISP_USBCMD, ISP_USBCMD_RUN);
-    if (isp_wait(ISP_USBCMD, ISP_USBCMD_RUN, ISP_USBCMD_RUN,
-            50) != ISP_SUCCESS) {
-        printf("Failed to start the ISP1760!\n");
-        return -1;
-    }
+  // Execute run command
+  isp_write_dword(ISP_USBCMD, ISP_USBCMD_RUN);
+  if (isp_wait(ISP_USBCMD, ISP_USBCMD_RUN, ISP_USBCMD_RUN, 50) != ISP_SUCCESS) {
+    printf("Failed to start the ISP1760!\n");
+    return -1;
+  }
 
-    // Enable EHCI mode
-    isp_write_dword(ISP_CONFIGFLAG, ISP_CONFIGFLAG_CF);
-    if (isp_wait(ISP_CONFIGFLAG, ISP_CONFIGFLAG_CF, ISP_CONFIGFLAG_CF,
-            50) != ISP_SUCCESS) {
-        printf("Failed to enable the EHCI mode!\n");
-        return -1;
-    }
+  // Enable EHCI mode
+  isp_write_dword(ISP_CONFIGFLAG, ISP_CONFIGFLAG_CF);
+  if (isp_wait(ISP_CONFIGFLAG, ISP_CONFIGFLAG_CF, ISP_CONFIGFLAG_CF, 50) != ISP_SUCCESS) {
+    printf("Failed to enable the EHCI mode!\n");
+    return -1;
+  }
 
-    // Set last maps
-    isp_write_dword(ISP_ATL_PTD_LASTPTD, 0x80000000);
-    isp_write_dword(ISP_INT_PTD_LASTPTD, 0x80000000);
-    isp_write_dword(ISP_ISO_PTD_LASTPTD, 0x00000001);
+  // Set last maps
+  isp_write_dword(ISP_ATL_PTD_LASTPTD, 0x80000000);
+  isp_write_dword(ISP_INT_PTD_LASTPTD, 0x80000000);
+  isp_write_dword(ISP_ISO_PTD_LASTPTD, 0x00000001);
 
 #ifndef USE_ROOT_HUB
-    // Enable port power
-    isp_write_dword(ISP_PORTSC1, ISP_PORTSC1_PP);
+  // Enable port power
+  isp_write_dword(ISP_PORTSC1, ISP_PORTSC1_PP);
 
-    // Wait connection
-    if (isp_wait(ISP_PORTSC1, ISP_PORTSC1_ECSC, ISP_PORTSC1_ECSC,
-            10) != ISP_SUCCESS) {
-        printf("Internal hub failed to connect!\n");
-        return -1;
-    }
+  // Wait connection
+  if (isp_wait(ISP_PORTSC1, ISP_PORTSC1_ECSC, ISP_PORTSC1_ECSC, 10) != ISP_SUCCESS) {
+    printf("Internal hub failed to connect!\n");
+    return -1;
+  }
 
-    isp_write_dword(ISP_PORTSC1,
-            isp_read_dword(ISP_PORTSC1) | ISP_PORTSC1_ECSC);
+  isp_write_dword(ISP_PORTSC1, isp_read_dword(ISP_PORTSC1) | ISP_PORTSC1_ECSC);
 
-    // Port reset
-    isp_write_dword(ISP_PORTSC1,
+  // Port reset
+  isp_write_dword(ISP_PORTSC1,
             ISP_PORTSC1_PP |
             (2u << 10) |
             ISP_PORTSC1_PR |
             ISP_PORTSC1_ECCS);
-    delay_ms(50);
+  delay_ms(50);
 
-    // Clear reset
-    isp_write_dword(ISP_PORTSC1,
-            isp_read_dword(ISP_PORTSC1) & ~(ISP_PORTSC1_PR));
+  // Clear reset
+  isp_write_dword(ISP_PORTSC1, isp_read_dword(ISP_PORTSC1) & ~(ISP_PORTSC1_PR));
 #endif
 
-    return 0;
+  return 0;
 }
 
 void isp_enable_irq(uint32_t enable) {
-    isp_write_dword(ISP_INTERRUPT_ENABLE, enable);
+  isp_write_dword(ISP_INTERRUPT_ENABLE, enable);
 }
 
 isp_result_t isp_transfer(ptd_type_t ptd_type, usb_speed_t speed,
@@ -250,7 +244,7 @@ isp_result_t isp_transfer(ptd_type_t ptd_type, usb_speed_t speed,
         uint32_t device_address, uint32_t parent_port, uint32_t parent_address,
         uint32_t max_packet_length, uint32_t *toggle,  usb_ep_type_t ep_type,
         uint32_t ep, uint8_t *buffer, uint32_t max_length, uint32_t *length,
-        int need_setup, int Timeout)
+        int32_t need_setup, int32_t Timeout)
 {
     isp_result_t result = ISP_SUCCESS;
     uint32_t payload_address;
@@ -262,8 +256,8 @@ isp_result_t isp_transfer(ptd_type_t ptd_type, usb_speed_t speed,
     uint32_t start_ptd[PTD_SIZE_DWORD], readback_ptd[PTD_SIZE_DWORD];
     uint32_t start_ticks;
     uint32_t actual_transfer_length;
-    int NakCount = 0;
-    int NakTimeout = Timeout != 0 ? Timeout : NACK_TIMEOUT_MS;
+    int32_t NakCount = 0;
+    int32_t NakTimeout = Timeout != 0 ? Timeout : NACK_TIMEOUT_MS;
 
     payload_address = MEM_PAYLOAD_BASE;
 
@@ -490,13 +484,13 @@ void isp_build_header(usb_speed_t speed, usb_token_t token, uint32_t device_addr
 
 // Glue Layer
 
-static int isp_submit(
+static int32_t isp_submit(
    struct usb_device *dev,
-   unsigned long pipe,
+   uint32_t pipe,
    void *buffer,
-   int length,
+   int32_t length,
    struct devrequest *req,
-   int Timeout)
+   int32_t Timeout)
 {
    isp_result_t result = ISP_SUCCESS;
    usb_speed_t speed = (usb_speed_t)usb_pipespeed(pipe);
@@ -596,10 +590,10 @@ static int isp_submit(
 
 #ifdef USE_ROOT_HUB
 // Root hub emulation
-int rootdev;
+int32_t rootdev;
 static uint16_t portreset;
 
-static inline int min3(int a, int b, int c)Manufacturer
+static inline int32_t min3(int32_t a, int32_t b, int32_t c)Manufacturer
 Product      Core (Plus) Wired Controller
 SerialNumber
 {
@@ -610,13 +604,13 @@ SerialNumber
    return a;
 }
 
-int isp_submit_root(struct usb_device *dev, unsigned long pipe, void *buffer,
-       int length, struct devrequest *req)
+int32_t isp_submit_root(struct usb_device *dev, uint32_t pipe, void *buffer,
+       int32_t length, struct devrequest *req)
 {
    uint8_t tmpbuf[4];
    uint16_t typeReq;
    void *srcptr = NULL;
-   int len, srclen;
+   int32_t len, srclen;
    uint32_t reg;
    uint32_t status_reg;
 
@@ -714,7 +708,7 @@ int isp_submit_root(struct usb_device *dev, unsigned long pipe, void *buffer,
          tmpbuf[0] |= USB_PORT_STAT_SUSPEND;
       if (reg & ISP_PORTSC1_PR &&
           (portreset & (1 << le16_to_cpu(req->index)))) {
-         int ret;
+         int32_t ret;
          /* force reset to complete */
          //reg = reg & ~(ISP_PORTSC1_PR | ISP_PORTSC1_ECSC);
          //isp_write_dword(status_reg, reg);
@@ -830,10 +824,10 @@ unknown:
 // Periodical interrupt transfer scheduling
 // -----------------------------------------------------------------------------
 
-void isp_register_transfer(struct usb_device *dev, unsigned long pipe,
-        void *buffer, int transfer_len) {
+void isp_register_transfer(struct usb_device *dev, uint32_t pipe,
+        void *buffer, int32_t transfer_len) {
     // new transfer must come as scheduled
-    for (int i = 0; i < MAX_REG_INT_TRANSFER_NUM; i++) {
+    for (int32_t i = 0; i < MAX_REG_INT_TRANSFER_NUM; i++) {
         if (registered_transfers[i].device == NULL) {
             registered_transfers[i].device = dev;
             registered_transfers[i].pipe = pipe;
@@ -847,7 +841,7 @@ void isp_register_transfer(struct usb_device *dev, unsigned long pipe,
 }
 
 void isp_deregister_transfer(struct usb_device *device) {
-    for (int i = 0; i < MAX_REG_INT_TRANSFER_NUM; i++) {
+    for (int32_t i = 0; i < MAX_REG_INT_TRANSFER_NUM; i++) {
         if (registered_transfers[i].device == device) {
             registered_transfers[i].device = NULL;
             break;
@@ -857,7 +851,7 @@ void isp_deregister_transfer(struct usb_device *device) {
 
 isp_result_t isp_finish_transfer(uint32_t id) {
     struct usb_device *dev = registered_transfers[id].device;
-    unsigned long pipe = registered_transfers[id].pipe;
+    uint32_t pipe = registered_transfers[id].pipe;
     uint32_t length = registered_transfers[id].length;
     uint8_t *buffer = registered_transfers[id].buffer;
     usb_speed_t speed = (usb_speed_t)usb_pipespeed(pipe);
@@ -879,7 +873,7 @@ isp_result_t isp_finish_transfer(uint32_t id) {
 }
 
 void isp_callback_irq(void) {
-    for (int i = 0; i < MAX_REG_INT_TRANSFER_NUM; i++) {
+    for (int32_t i = 0; i < MAX_REG_INT_TRANSFER_NUM; i++) {
         if (registered_transfers[i].device != NULL) {
             if (registered_transfers[i].state == STATE_SCHEDULED) {
                 isp_result_t result = isp_finish_transfer(i);
@@ -902,7 +896,7 @@ void isp_schedule(uint32_t id) {
 
 void isp_reschedule(void) {
     // should only be called when no transfers are scheduled
-    for (int i = 0; i < MAX_REG_INT_TRANSFER_NUM; i++) {
+    for (int32_t i = 0; i < MAX_REG_INT_TRANSFER_NUM; i++) {
         if (registered_transfers[i].device != NULL) {
             if (registered_transfers[i].state == STATE_IDLE) {
                 // schedule this
@@ -912,8 +906,8 @@ void isp_reschedule(void) {
         }
     }
     // finished but nothing has been scheduled, probably all transfers are done
-    int scheduled = false;
-    for (int i = 0; i < MAX_REG_INT_TRANSFER_NUM; i++) {
+    int32_t scheduled = false;
+    for (int32_t i = 0; i < MAX_REG_INT_TRANSFER_NUM; i++) {
         registered_transfers[i].state = STATE_IDLE;
         if ((registered_transfers[i].device != NULL) && !scheduled) {
             isp_schedule(i);
@@ -935,10 +929,10 @@ void isp_isr(void) {
 }
 
 void isp_poll_no_irq(void) {
-    for (int i = 0; i < MAX_REG_INT_TRANSFER_NUM; i++) {
+    for (int32_t i = 0; i < MAX_REG_INT_TRANSFER_NUM; i++) {
         if (registered_transfers[i].device != NULL) {
             // JUST POLL THIS
-            int result = isp_submit(registered_transfers[i].device,
+            int32_t result = isp_submit(registered_transfers[i].device,
                     registered_transfers[i].pipe,
                     registered_transfers[i].buffer,
                     registered_transfers[i].length, NULL,0);
@@ -954,26 +948,26 @@ void isp_poll_no_irq(void) {
 
 #if 1
 
-int usb_lowlevel_init(void) {
+int32_t usb_lowlevel_init(void) {
 #ifdef USE_ROOT_HUB
     rootdev = 0;
 #endif
 
-    for (int i = 0; i < MAX_REG_INT_TRANSFER_NUM; i++) {
+    for (int32_t i = 0; i < MAX_REG_INT_TRANSFER_NUM; i++) {
     // be handled by the stack I guess...)
         registered_transfers[i].device = NULL;
     }
     return isp_init();
 }
 
-int usb_lowlevel_stop(void) {
+int32_t usb_lowlevel_stop(void) {
     isp_reset();
 }
 
-int submit_bulk_msg(struct usb_device *dev, unsigned long pipe,
-                    void *buffer, int transfer_len,int Timeout)
+int32_t submit_bulk_msg(struct usb_device *dev, uint32_t pipe,
+                    void *buffer, int32_t transfer_len, int32_t Timeout)
 {
-   int Ret = -1;
+   int32_t Ret = -1;
 
    LOG_ENABLE();
    do {
@@ -991,8 +985,8 @@ int submit_bulk_msg(struct usb_device *dev, unsigned long pipe,
    return Ret;
 }
 
-int submit_control_msg(struct usb_device *dev, unsigned long pipe, void *buffer,
-      int transfer_len, struct devrequest *setup) {
+int32_t submit_control_msg(struct usb_device *dev, uint32_t pipe, void *buffer,
+      int32_t transfer_len, struct devrequest *setup) {
     if (usb_pipetype(pipe) != PIPE_CONTROL) {
       LOG("non-control pipe");
       return -1;
@@ -1010,8 +1004,8 @@ int submit_control_msg(struct usb_device *dev, unsigned long pipe, void *buffer,
    return isp_submit(dev, pipe, buffer, transfer_len, setup,0);
 }
 
-int submit_int_msg(struct usb_device *dev, unsigned long pipe, void *buffer,
-      int transfer_len, int interval) {
+int32_t submit_int_msg(struct usb_device *dev, uint32_t pipe, void *buffer,
+      int32_t transfer_len, int32_t interval) {
     if (usb_pipetype(pipe) != PIPE_INTERRUPT) {
       LOG("non-interrupt pipe");
       return -1;
@@ -1022,7 +1016,7 @@ int submit_int_msg(struct usb_device *dev, unsigned long pipe, void *buffer,
 
 #ifdef ISP_IRQ_DRIVEN
     // interval is not changeable
-    return isp_submit(dev, pipe, buffer, transfer_len, NULL);
+    return isp_submit(dev, pipe, buffer, transfer_len, NULL, 0);
 #else
     return 0;
 #endif
@@ -1032,10 +1026,10 @@ void usb_event_poll(void) {
 #ifdef ISP_IRQ_DRIVEN
     // Check if there is any interrupts, if so, call the interrupt handler
     // This is used when there is no hardware IRQs in the system
-    if ((isp_read_dword(ISP_INTERRUPT) & ISP_INT_MASK) != 0) {
-        isp_isr();
-    }
-    isp_write_dword(ISP_INTERRUPT, ISP_INT_MASK); // Clear interrupts
+    //if ((isp_read_dword(ISP_INTERRUPT) & ISP_INT_MASK) != 0) {
+    //    isp_isr();
+    //}
+    //isp_write_dword(ISP_INTERRUPT, ISP_INT_MASK); // Clear interrupts
 #else
     isp_poll_no_irq();
 #endif

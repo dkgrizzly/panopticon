@@ -39,6 +39,8 @@
 // #define VERBOSE_DEBUG_LOGGING
 #include "log.h"
 
+PutCharCallback_t PutCharCallback = (PutCharCallback_t)NULL;
+
 void UartPutc(char c)
 {
   if(!(UART0_CTL & 0x2)) {
@@ -51,13 +53,16 @@ void UartPutc(char c)
 
 void LogPutc(char c,void *arg)
 {
-   int LogFlags = (int) arg;
+  int LogFlags = (int) arg;
 
-   if(!(LogFlags & LOG_DISABLED)) {
-      if(LogFlags & LOG_SERIAL) {
-         UartPutc(c);
-      }
-   }
+  if(!(LogFlags & LOG_DISABLED)) {
+    if(LogFlags & LOG_SERIAL) {
+      UartPutc(c);
+    }
+    if((LogFlags & LOG_MONITOR) && (PutCharCallback != NULL)) {
+      PutCharCallback(c);
+    }
+  }
 }
 
 void PrintfPutc(char c)

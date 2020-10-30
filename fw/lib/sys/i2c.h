@@ -20,8 +20,17 @@
 #define __I2C_H__
 
 #include <stdint.h>
+#include <stdbool.h>
 
-bool i2c_read_reg(uint8_t i2c_addr, uint8_t addr, uint8_t *data);
-bool i2c_write_reg(uint8_t i2c_addr, uint8_t addr, uint8_t data);
+typedef struct I2CContext_s {
+  volatile uint32_t *scl;
+  volatile uint32_t *sda;
+} I2CContext_t;
+
+extern I2CContext_t *AUDIO_I2C;
+extern I2CContext_t *VGA_I2C;
+
+bool i2c_read_reg(I2CContext_t *pCtx, uint8_t i2c_addr, uint8_t addr, uint8_t *data);
+bool i2c_write_reg(I2CContext_t *pCtx, uint8_t i2c_addr, uint8_t addr, uint8_t data);
 
 #endif

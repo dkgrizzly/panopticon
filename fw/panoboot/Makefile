@@ -2,10 +2,10 @@ PATH := /opt/riscv32i/bin:$(PATH)
 
 TOPDIR := ../..
 
-INCLUDES = -I../lib/sys -I../lib/usb -I../lib/gpu -I../lib/vt100 -I../lib/audio -I../lib/fatfs
-OBJS = start.o firmware.o irq_handler.o
-LDFLAGS  = -L../lib/sys -L../lib/usb -L../lib/gpu -L../lib/vt100 -L../lib/audio -L../lib/fatfs
-LDFLAGS += -lfatfs -lusb -lgpu -lvt100 -lsys -lgcc
+INCLUDES = -I../lib/sys -I../lib/usb -I../lib/gpu -I../lib/vt100 -I../lib/audio -I../lib/fatfs -I../lib/elf
+OBJS = start.o main.o irq_handler.o
+LDFLAGS  = -L../lib/sys -L../lib/usb -L../lib/gpu -L../lib/vt100 -L../lib/audio -L../lib/fatfs -L../lib/elf
+LDFLAGS += -lelf -lfatfs -lusb -lgpu -lvt100 -lsys -lgcc
 CFLAGS = -MD -O1 -march=rv32ic -ffreestanding -nostdlib -Wl,--no-relax
 TOOLCHAIN_PREFIX = riscv32-unknown-elf-
 

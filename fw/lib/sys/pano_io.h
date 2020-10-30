@@ -24,6 +24,8 @@
 #ifndef _PANO_IO_H_
 #define _PANO_IO_H_
 
+#define WM8750L_I2C_ADR       0x34
+
 #define DLY_TAP_ADR              0x03000000
 #define LEDS_ADR                 0x03000004
 #define UART0_D_ADR              0x03000100

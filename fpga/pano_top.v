@@ -370,6 +370,8 @@ module pano_top(
     // 0 - output, 1 - input 
     assign USB_D = (bus_dir) ? (16'bz) : (usb_dout);
     assign usb_din = USB_D;
+
+    wire usb_irq = USB_IRQ;
     
     // SPI Flash
     // ----------------------------------------------------------------------
@@ -625,7 +627,7 @@ module pano_top(
         .ENABLE_IRQ_TIMER(1),
         .COMPRESSED_ISA(1),
         .PROGADDR_IRQ(PROGADDR_IRQ),
-        .MASKED_IRQ(32'hffffffe3),
+        .MASKED_IRQ(32'hffffffc0),
         .LATCHED_IRQ(32'hffffffff)
     ) cpu (
         .clk(clk_rv),
@@ -638,7 +640,7 @@ module pano_top(
         .mem_wstrb(mem_wstrb),
         .mem_rdata(mem_rdata),
         .mem_la_addr(mem_la_addr),
-        .irq({27'b0, hsync_irq, vsync_irq, cpu_irq, 2'b0})
+        .irq({26'b0, usb_irq, hsync_irq, vsync_irq, cpu_irq, 2'b0})
     );
         
     // Internal RAM & Boot ROM
@@ -747,11 +749,11 @@ module pano_top(
     
     // 03000000 (0)  - R:  delay_sel_det / W: delay_sel_val
     // 03000004 (1)  - W:  leds (b0: red, b1: green, b2: blue)
-    // 03000008 (2)  - W:  idt clock gen
-    // 0300000c (3)  - W:  not used
-    // 03000010 (4)  - W:  not used
-    // 03000014 (5)  - W:  i2c_scl
-    // 03000018 (6)  - RW: i2c_sda
+    // 03000008 (2)  - W:  reserved
+    // 0300000c (3)  - W:  vga I2C scl
+    // 03000010 (4)  - RW: vga I2C sda
+    // 03000014 (5)  - W:  audio I2C scl
+    // 03000018 (6)  - RW: audio I2C sda
     // 0300001c (7)  - W:  usb_rst_n
     
     reg [31:0] gpio_rdata;
@@ -759,8 +761,10 @@ module pano_top(
     reg led_red;
     reg led_blue;
     reg usb_rstn;
-    reg i2c_scl;
-    reg i2c_sda;
+    reg audio_i2c_scl;
+    reg audio_i2c_sda;
+    reg vga_i2c_scl;
+    reg vga_i2c_sda;
 
     always@(posedge clk_rv) begin
         if (gpio_valid)
@@ -772,8 +776,10 @@ module pano_top(
                         led_green <= mem_wdata[1];
                         led_blue <= mem_wdata[2];
                     end
-                    4'd5: i2c_scl <= mem_wdata[0];
-                    4'd6: i2c_sda <= mem_wdata[0];
+                    4'd3: vga_i2c_scl <= mem_wdata[0];
+                    4'd4: vga_i2c_sda <= mem_wdata[0];
+                    4'd5: audio_i2c_scl <= mem_wdata[0];
+                    4'd6: audio_i2c_sda <= mem_wdata[0];
                     4'd7: usb_rstn <= mem_wdata[0];
                 endcase
              end
@@ -781,6 +787,7 @@ module pano_top(
                 case (mem_addr[5:2])
                     4'd0: gpio_rdata <= {27'd0, delay_sel_val_det};
                     4'd1: gpio_rdata <= {29'd0, led_blue, led_green, led_red};
+                    4'd4: gpio_rdata <= {31'd0, VGA_SDA};
                     4'd6: gpio_rdata <= {31'd0, AUDIO_SDA};
                 endcase
              end
@@ -790,13 +797,18 @@ module pano_top(
             led_red <= 1'b0;
             led_blue <= 1'b0;
             // vb_key <= 8'd0;
-            i2c_scl <= 1'b1;
-            i2c_sda <= 1'b1;
+            audio_i2c_scl <= 1'b1;
+            audio_i2c_sda <= 1'b1;
+            vga_i2c_scl <= 1'b1;
+            vga_i2c_sda <= 1'b1;
         end
     end
     
-    assign AUDIO_SCL = i2c_scl;
-    assign AUDIO_SDA = (i2c_sda) ? 1'bz : 1'b0;
+    assign AUDIO_SCL = audio_i2c_scl;
+    assign AUDIO_SDA = (audio_i2c_sda) ? 1'bz : 1'b0;
+
+    assign VGA_SCL = vga_i2c_scl;
+    assign VGA_SDA = (vga_i2c_sda) ? 1'bz : 1'b0;
     
     assign USB_RESET_B = usb_rstn;
     assign USB_HUB_RESET_B = usb_rstn;
@@ -858,15 +870,11 @@ module pano_top(
     assign VGA_VSYNC = vga_vs;
     assign VGA_HSYNC = vga_hs;
     
-    assign VGA_SDA = 1'bz;
-    //assign VGA_SCL = 1'bz;
-        
     // ----------------------------------------------------------------------
     // LED 
     assign LED_BLUE = !led_blue;
     assign LED_RED = !led_red;
     assign LED_GREEN = !led_green;
-
 
     // CPU Read Data Bus
     // ----------------------------------------------------------------------

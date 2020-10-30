@@ -141,7 +141,7 @@ short int audio_registers[][2] = {
 };
 
 
-void audio_init(ContextI2C *pCtx)
+void audio_init()
 {
     int idx = 0;
     while(audio_registers[idx][0] != -1){
@@ -149,7 +149,7 @@ void audio_init(ContextI2C *pCtx)
         int value = audio_registers[idx][1];
 
         VLOG("0x%x -> 0x%x\n",value,addr);
-        if(!i2c_write_reg(pCtx, WM8750L_I2C_ADR, (addr<<1) | (value>>8), (value & 0xff))) {
+        if(!i2c_write_reg(AUDIO_I2C, WM8750L_I2C_ADR, (addr<<1) | (value>>8), (value & 0xff))) {
             ELOG("i2c_write_reg failed\n");
            break;
         }
