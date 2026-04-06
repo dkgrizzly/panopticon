@@ -1158,7 +1158,7 @@ void usb_hub_port_connect_change(struct usb_device *dev, int32_t port)
    else
       usb->speed = USB_SPEED_FULL;
 
-   usb->portnr = port;
+   usb->portnr = port + 1;
    dev->children[port] = usb;
    usb->parent = dev;
    /* Run it through the hoops (find a driver, etc) */
